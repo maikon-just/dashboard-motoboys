@@ -842,18 +842,21 @@ function updatePayFormula(){
 }
 
 // Carregar config no painel ao mudar empresa selecionada
-document.getElementById('cfgEmpresa').addEventListener('change', function(){
-  const cfg = PAY_CONFIG[this.value] || PAY_CONFIG['todas'];
-  document.getElementById('cfgValorFimSemana').value  = (cfg.valorFimSemana||11).toFixed(2);
-  document.getElementById('cfgValorMeioSemana').value = (cfg.valorMeioSemana||9).toFixed(2);
-  const elAt = document.getElementById('cfgAjusteTurno'); if(elAt) elAt.value = (cfg.ajusteTurno||0);
-  document.getElementById('cfgChuva').checked         = cfg.chuva||false;
-  const elTt = document.getElementById('cfgTxTrans');      if(elTt) elTt.value = (cfg.txTrans!==undefined    ? cfg.txTrans    : 1.50).toFixed(2);
-  const elKm = document.getElementById('cfgKmAdic');       if(elKm) elKm.value = (cfg.kmAdicBase!==undefined ? cfg.kmAdicBase : 1.50).toFixed(2);
-  const elGf  = document.getElementById('cfgGarantidoFS');       if(elGf)  elGf.value  = cfg.garantidoFS       !== undefined ? cfg.garantidoFS       : 10;
-  const elGmN = document.getElementById('cfgGarantidoMSNormal'); if(elGmN) elGmN.value = cfg.garantidoMSNormal !== undefined ? cfg.garantidoMSNormal : 10;
-  const elGmT = document.getElementById('cfgGarantidoMSTrans');  if(elGmT) elGmT.value = cfg.garantidoMSTrans  !== undefined ? cfg.garantidoMSTrans  : 12;
-});
+const _cfgEmpresaChangeEl = document.getElementById('cfgEmpresa');
+if(_cfgEmpresaChangeEl){
+  _cfgEmpresaChangeEl.addEventListener('change', function(){
+    const cfg = PAY_CONFIG[this.value] || PAY_CONFIG['todas'];
+    document.getElementById('cfgValorFimSemana').value  = (cfg.valorFimSemana||11).toFixed(2);
+    document.getElementById('cfgValorMeioSemana').value = (cfg.valorMeioSemana||9).toFixed(2);
+    const elAt = document.getElementById('cfgAjusteTurno'); if(elAt) elAt.value = (cfg.ajusteTurno||0);
+    document.getElementById('cfgChuva').checked         = cfg.chuva||false;
+    const elTt = document.getElementById('cfgTxTrans');      if(elTt) elTt.value = (cfg.txTrans!==undefined    ? cfg.txTrans    : 1.50).toFixed(2);
+    const elKm = document.getElementById('cfgKmAdic');       if(elKm) elKm.value = (cfg.kmAdicBase!==undefined ? cfg.kmAdicBase : 1.50).toFixed(2);
+    const elGf  = document.getElementById('cfgGarantidoFS');       if(elGf)  elGf.value  = cfg.garantidoFS       !== undefined ? cfg.garantidoFS       : 10;
+    const elGmN = document.getElementById('cfgGarantidoMSNormal'); if(elGmN) elGmN.value = cfg.garantidoMSNormal !== undefined ? cfg.garantidoMSNormal : 10;
+    const elGmT = document.getElementById('cfgGarantidoMSTrans');  if(elGmT) elGmT.value = cfg.garantidoMSTrans  !== undefined ? cfg.garantidoMSTrans  : 12;
+  });
+}
 updatePayFormula();
 
 // ═══════════════════════════════════════════════════════════════════
@@ -898,10 +901,13 @@ document.querySelectorAll('.btn-filter').forEach(btn => {
     render();
   });
 });
-document.getElementById('searchName').addEventListener('input', e => {
-  fNome = e.target.value.trim().toUpperCase();
-  render();
-});
+const _searchNameInput = document.getElementById('searchName');
+if(_searchNameInput){
+  _searchNameInput.addEventListener('input', e => {
+    fNome = e.target.value.trim().toUpperCase();
+    render();
+  });
+}
 
 // Filtro por número do motoboy (ex: "#3" filtra o motoboy de número 3)
 // O filtro de nome já intercepta isso na função filtered() abaixo
@@ -1998,12 +2004,15 @@ function getDiaSemana(ddmmyyyy){
   return DIA_SEMANA[dt.getDay()];
 }
 
-document.getElementById('uploadInput').addEventListener('change', function(e){
-  const files = Array.from(e.target.files);
-  if(!files.length) return;
-  processUploadFiles(files);
-  this.value = '';
-});
+const _uploadInputChangeEl = document.getElementById('uploadInput');
+if(_uploadInputChangeEl){
+  _uploadInputChangeEl.addEventListener('change', function(e){
+    const files = Array.from(e.target.files);
+    if(!files.length) return;
+    processUploadFiles(files);
+    this.value = '';
+  });
+}
 
 // Mapeamento lojaNome (da aba eficiência) → chave PEMPS (da aba pagamentos)
 const _LOJA_TO_EMP = {
@@ -6177,6 +6186,25 @@ function pagAbrirCadastroPix(){
     bar.appendChild(mk('pag-quick-hoje','📅 Diário', pagPresetHoje, 'rgba(14,165,233,.15)', '#38bdf8', '#7dd3fc'));
     bar.appendChild(mk('pag-quick-semana','🗓️ Semanal', pagPresetSemana, 'rgba(16,185,129,.15)', '#34d399', '#86efac'));
   }
+  let __motoToastTimer = null;
+  function motoToast(msg, dur=3500){
+    try{
+      if(typeof showToast === 'function'){
+        showToast(msg, dur);
+        return;
+      }
+    }catch(e){}
+    const t = document.getElementById('toast');
+    if(!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(__motoToastTimer);
+    __motoToastTimer = setTimeout(() => t.classList.remove('show'), dur);
+  }
+  function rowLooksLikeMotoboys(row){
+    if(!row || typeof row !== 'object') return false;
+    return ('Entregador' in row) || ('Entrega' in row) || ('Valor Entregador' in row) || ('Nome da loja' in row) || ('Código da loja' in row) || ('Codigo da loja' in row);
+  }
   window.pagPresetHoje = function(){
     const all = getAllDates();
     if(!all.length) return;
@@ -6199,6 +6227,7 @@ function pagAbrirCadastroPix(){
   };
   function ingestMotoRows(rows, map, detail, stats, counters, seenPedidos, repId){
     rows.forEach((row, idx) => {
+      if(!rowLooksLikeMotoboys(row)) return;
       const pedidoBase = row['Id do pedido no parceiro'] || row['Número do pedido no parceiro'] || row['Pedido'] || `${repId||'rep'}_${idx}`;
       const dataPedido = normalizaData(row['Data da venda']||row['Data']);
       const codigoPedido = row['Código da loja']||row['Codigo da loja']||row['Cód. loja']||'';
@@ -6276,7 +6305,7 @@ function pagAbrirCadastroPix(){
     try{
       const obj = await motoFetchJson(REPORTS_URL) || {};
       const reports = Object.entries(obj).map(([id,v]) => ({id,...v}))
-        .filter(r => r.tipo === 'motoboys' && r.status !== 'deletado')
+        .filter(r => r && r.status !== 'deletado')
         .sort((a,b)=>(a.timestamp_upload||0)-(b.timestamp_upload||0));
       const map = {};
       const detail = [];
@@ -6310,18 +6339,21 @@ function pagAbrirCadastroPix(){
         falhas ? `${falhas} upload(s) com falha foram ignorados` : null,
         totalLinhas ? `${totalLinhas.toLocaleString()} linha(s) lidas da base` : null
       ].filter(Boolean).join(' • ') || 'Base sincronizada';
-      reinitCal();
-      syncDateInputsFromState();
-      render();
-      ensureQuickPaymentButtons();
-      if(truncados) showToast(`⚠️ ${truncados} upload(s) antigos ainda estão truncados em 500 linhas. Reenvie-os pelo novo portal.`, 6000);
-      else showToast(`✅ Dashboard de motoboys sincronizado com ${reports.length} upload(s) do Firebase.`, 3500);
+      try{ reinitCal(); }catch(uiErr){ console.error('Falha ao reiniciar calendário do motoboys', uiErr); }
+      try{ syncDateInputsFromState(); }catch(uiErr){ console.error('Falha ao sincronizar datas do motoboys', uiErr); }
+      try{ render(); }catch(uiErr){ console.error('Falha ao renderizar dashboard de motoboys', uiErr); }
+      try{ ensureQuickPaymentButtons(); }catch(uiErr){ console.error('Falha ao montar atalhos do motoboys', uiErr); }
+      if(truncados) motoToast(`⚠️ ${truncados} upload(s) antigos ainda estão truncados em 500 linhas. Reenvie-os pelo novo portal.`, 6000);
+      else motoToast(`✅ Dashboard de motoboys sincronizado com ${reports.length} upload(s) do Firebase.`, 3500);
     }catch(err){
       console.error(err);
       if(statusEl) statusEl.textContent = '❌ Falha ao ler base do Firebase';
       if(subEl) subEl.textContent = 'Verifique a conexão com o banco';
-      RAW = []; RAW_DETAIL = []; render();
-      showToast('❌ Erro ao carregar a base de motoboys.', 5000);
+      if(!RAW.length){
+        RAW = []; RAW_DETAIL = [];
+      }
+      try{ render(); }catch(uiErr){ console.error('Falha ao renderizar estado de erro do motoboys', uiErr); }
+      motoToast('❌ Erro ao carregar a base de motoboys.', 5000);
     }
   }
   document.querySelectorAll('.btn-upload').forEach((btn, idx) => { if(idx < 2) btn.style.display = 'none'; });
@@ -6332,7 +6364,16 @@ function pagAbrirCadastroPix(){
     try{ localStorage.removeItem('motoboys_raw_v2'); localStorage.removeItem('motoboys_raw_detail_v1'); localStorage.removeItem('motoboys_stats_dl_v1'); }catch(e){}
     loadFromFirebaseMotoboys();
   };
-  loadFromFirebaseMotoboys();
+  function startMotoFirebaseLoad(){
+    if(window.__motoFirebaseStarted) return;
+    window.__motoFirebaseStarted = true;
+    loadFromFirebaseMotoboys();
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', () => setTimeout(startMotoFirebaseLoad, 0), { once:true });
+  }else{
+    setTimeout(startMotoFirebaseLoad, 0);
+  }
 })();
 </script>
 
