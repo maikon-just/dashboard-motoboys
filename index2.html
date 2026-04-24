@@ -4878,17 +4878,6 @@ function pagSyncFromRAW(){
   PAG_EMPS.forEach(emp=>{ PAG_DATA[emp]={}; });
   if(!RAW||RAW.length===0) return;
 
-  // Usa a mesma lógica de agrupamento fuzzy da tela de eficiência
-  // dentro de cada empresa antes de montar a base de pagamentos.
-  const pagMapasPorEmp = {};
-  PAG_EMPS.forEach(emp=>{
-    const nomesEmp = RAW
-      .filter(r => PAG_EMP_LOJA[r.loja]===emp)
-      .map(r => (r && r.nome ? String(r.nome).toUpperCase() : ''))
-      .filter(nome => nome && nome !== '(SEM ENTREGADOR)' && !isNomeEspecial(nome));
-    pagMapasPorEmp[emp] = pagBuildNameGroupMap(nomesEmp);
-  });
-
   // ══════════════════════════════════════════════════════════════════════
   // PASSO 1: acumula por empresa / motoboy(gKey) / dia
   // ──────────────────────────────────────────────────────────────────────
@@ -4906,7 +4895,7 @@ function pagSyncFromRAW(){
     if(isNomeEspecial(nomeRaw)) return;
 
     // Chave de fusão dentro da empresa (número de cadastro tem prioridade)
-    const gk=pagGrupoKey(nomeRaw, pagMapasPorEmp[emp]);
+    const gk=pagGrupoKey(nomeRaw);
 
     if(!PAG_DATA[emp][gk]){
       PAG_DATA[emp][gk]={
@@ -4944,7 +4933,7 @@ function pagSyncFromRAW(){
       const nomeRaw=c.nome?c.nome.toUpperCase():null;
       if(!nomeRaw||nomeRaw==='(SEM ENTREGADOR)') return;
       if(isNomeEspecial(nomeRaw)) return;
-      const gk=pagGrupoKey(nomeRaw, pagMapasPorEmp[emp]);
+      const gk=pagGrupoKey(nomeRaw);
       if(!PAG_DATA[emp][gk]) return;
       const d=PAG_DATA[emp][gk].dias[c.data];
       if(!d) return;
@@ -5339,14 +5328,6 @@ function pagRender(){
   // Filtro de nome
   const filtroNome=PAG_FILTROS.nome?pagNomeNorm(PAG_FILTROS.nome):'';
 
-  // Mesmo critério da tela de eficiência para fundir nomes parecidos
-  // quando múltiplas empresas estão selecionadas.
-  const pagMapaNomesVisiveis = (()=>{
-    const nomes=[];
-    ef.forEach(emp=>Object.values(PAG_DATA[emp]).forEach(m=>{ if(m && m.nome) nomes.push(m.nome); }));
-    return pagBuildNameGroupMap(nomes);
-  })();
-
   const temDados=ef.some(emp=>Object.keys(PAG_DATA[emp]).length>0);
   if(!temDados){
     main.innerHTML='<div class="pempty"><div class="pei">🏍️</div><p>Nenhum dado carregado no dashboard. Aguarde a leitura da base sincronizada no Firebase.</p></div>';
@@ -5398,8 +5379,9 @@ function pagRender(){
           }
           const nn=pagNomeNorm(m.nome);
           if(filtroNome&&!nn.includes(filtroNome)) return;
-          // Chave de agrupamento: mesmo agrupamento fuzzy da eficiência
-          const gKey=pagGrupoKey(m.nome, pagMapaNomesVisiveis);
+          // Chave de agrupamento: número de cadastro ou nome normalizado
+          const num=pagNumCadastro(m.nome);
+          const gKey=num||nn;
           if(!grupoMap[gKey]){
             grupoMap[gKey]={nome:m.nome,gKey,emps:[],totalValEnt:0,totalQtd:0,turnos:new Set()};
           }
@@ -5487,7 +5469,7 @@ function pagRender(){
           const nn=pagNomeNorm(m.nome);
           if(filtroNome&&!nn.includes(filtroNome)) return;
           // Agrupa pelo número de cadastro (evita duplicatas com nomes levemente diferentes)
-          const gKey=pagGrupoKey(m.nome, pagMapaNomesVisiveis);
+          const gKey=pagGrupoKey(m.nome);
           if(!grupoMap[gKey]){
             grupoMap[gKey]={nome:m.nome,gKey,emps:[],totalValEnt:0,totalQtd:0,turnos:new Set()};
           }
@@ -5685,20 +5667,10 @@ function pagSetPix(nn,val){
   try{localStorage.setItem('mpag_pix_v2',JSON.stringify(pagPixMap));}catch(e){}
 }
 
-function pagBuildNameGroupMap(nomes){
-  const lista=[...new Set((nomes||[]).map(pagNomeNorm).filter(Boolean))];
-  return lista.length ? construirGruposNomes(lista) : {};
-}
-
-// ── Helper: chave de agrupamento para pagamentos
-// Prioriza nº de cadastro. Quando não houver, aplica a mesma fusão fuzzy
-// usada pela tela de eficiência (nomesIguais + construirGruposNomes).
-function pagGrupoKey(nome, mapaNomes){
+// ── Helper: chave de agrupamento para resumo (usa nº cadastro se disponível)
+function pagGrupoKey(nome){
   const num=pagNumCadastro(nome);
-  if(num) return 'ID:'+num;
-  const nn=pagNomeNorm(nome);
-  const rep=(mapaNomes && mapaNomes[nn]) ? mapaNomes[nn] : nn;
-  return 'NM:'+rep;
+  return num||pagNomeNorm(nome);
 }
 
 // Resumo financeiro
