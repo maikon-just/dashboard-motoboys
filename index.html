@@ -6165,25 +6165,96 @@ function pagAbrirCadastroPix(){
 <script>
 (function(){
   const FIREBASE_URL = 'https://justburger-producao-e9b27-default-rtdb.firebaseio.com';
-  const INDEX_ROOT = 'vendas_indexadas';
-  const INDEXED_COMPANY_KEYS = ['burger-matriz','burger-abc','burger-gru','gourmet','aham-forneria','aham-sushi'];
   const REPORTS_URL = FIREBASE_URL + '/relatorios_diarios.json';
+  const CACHE_META_KEY = 'motoboys_cache_meta_v2';
 
-  function motoFetchJson(url){ return fetch(url, {cache:'no-store'}).then(r => { if(!r.ok) throw new Error('Falha ao ler '+url); return r.json(); }); }
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function monthKeyFromBr(ddmmyyyy){
+    if(!ddmmyyyy) return '';
+    const [d,m,y] = String(ddmmyyyy).split('/');
+    if(!d || !m || !y) return '';
+    return `${y}-${m}`;
+  }
+  function sameMonthBr(a,b){ return monthKeyFromBr(a) && monthKeyFromBr(a) === monthKeyFromBr(b); }
+  function setCalToLatestData(){
+    const all = getAllDates();
+    if(!all.length) return;
+    const latest = parseDate(all[all.length - 1]);
+    calYear = latest.y;
+    calMonth = latest.m;
+  }
+  function applyLatestMonthRangeFromData(force=false){
+    const all = getAllDates();
+    if(!all.length) return;
+    const latest = all[all.length - 1];
+    const latestMonth = monthKeyFromBr(latest);
+    const sameMonth = all.filter(d => monthKeyFromBr(d) === latestMonth);
+    const first = sameMonth[0] || latest;
+    const last = sameMonth[sameMonth.length - 1] || latest;
+    if(force || (!fDataDe && !fDataAte)){
+      fDataDe = first;
+      fDataAte = last;
+      const inputDe = document.getElementById('inputDe');
+      const inputAte = document.getElementById('inputAte');
+      if(inputDe) inputDe.value = fDataDe || '';
+      if(inputAte) inputAte.value = fDataAte || '';
+    }
+    const calLabel = document.getElementById('calLabel');
+    if(calLabel){
+      if(fDataDe && fDataAte && fDataDe !== fDataAte) calLabel.textContent = '📅 ' + fDataDe.slice(0,5) + ' → ' + fDataAte.slice(0,5);
+      else if(fDataDe) calLabel.textContent = '📅 ' + fDataDe;
+      else calLabel.textContent = '📅 Selecione o período';
+    }
+    syncDateInputsFromState();
+    setCalToLatestData();
+  }
+  reinitCal = function(){ setCalToLatestData(); };
+
+  function motoToast(msg, dur=3500){
+    try{ if(typeof showToast === 'function'){ showToast(msg, dur); return; } }catch(e){}
+    const t = document.getElementById('toast');
+    if(!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(window.__motoToastTimer);
+    window.__motoToastTimer = setTimeout(() => t.classList.remove('show'), dur);
+  }
+  function motoFetchJson(url){
+    return fetch(url, {cache:'no-store'}).then(r => {
+      if(!r.ok) throw new Error('Falha ao ler ' + url);
+      return r.json();
+    });
+  }
+  function rowLooksLikeMotoboys(row){
+    if(!row || typeof row !== 'object') return false;
+    return ('Entregador' in row) || ('Entrega' in row) || ('Valor Entregador' in row) || ('Nome da loja' in row) || ('Código da loja' in row) || ('Codigo da loja' in row);
+  }
+  function isYesLike(value){
+    const s = String(value == null ? '' : value).trim().toUpperCase();
+    return s === 'S' || s === 'SIM' || s === 'Y' || s === 'YES' || s === 'TRUE' || s === '1';
+  }
+  function parseEmbeddedRows(rep){
+    const candidates = [rep?.preview_json, rep?.dados_json];
+    for(const raw of candidates){
+      if(!raw) continue;
+      try{
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if(Array.isArray(parsed?.linhas)) return parsed.linhas.slice();
+        if(Array.isArray(parsed?.rows)) return parsed.rows.slice();
+      }catch(e){}
+    }
+    return [];
+  }
   async function motoFetchReportRows(rep){
-    let parsed = {};
-    try{ parsed = JSON.parse(rep.dados_json || '{}'); }catch(e){ parsed = {}; }
-    let rows = Array.isArray(parsed.linhas) ? parsed.linhas.slice() : [];
-    let totalOriginal = Number(parsed.total_original || rows.length || rep.total_linhas || 0);
-    let chunkCount = 0;
-    if(rep.chunked && rep.chunks_path){
+    let rows = parseEmbeddedRows(rep);
+    let totalOriginal = Number(rep?.total_linhas || rows.length || 0);
+    if(rep && rep.chunked && rep.chunks_path){
       const chunksObj = await motoFetchJson(`${FIREBASE_URL}/${rep.chunks_path}.json`);
       const chunkList = Object.values(chunksObj || {}).sort((a,b)=>(a.chunk_index||0)-(b.chunk_index||0));
-      chunkCount = chunkList.length;
-      rows = chunkList.flatMap(c => Array.isArray(c.rows) ? c.rows : []);
+      rows = chunkList.flatMap(chunk => Array.isArray(chunk?.rows) ? chunk.rows : []);
       if(!totalOriginal) totalOriginal = rows.length;
     }
-    return {rows, totalOriginal, chunkCount};
+    return { rows, totalOriginal };
   }
   function ensureQuickPaymentButtons(){
     const bar = document.getElementById('pag-action-bar');
@@ -6197,148 +6268,35 @@ function pagAbrirCadastroPix(){
     bar.appendChild(mk('pag-quick-hoje','📅 Diário', pagPresetHoje, 'rgba(14,165,233,.15)', '#38bdf8', '#7dd3fc'));
     bar.appendChild(mk('pag-quick-semana','🗓️ Semanal', pagPresetSemana, 'rgba(16,185,129,.15)', '#34d399', '#86efac'));
   }
-  let __motoToastTimer = null;
-  function motoToast(msg, dur=3500){
-    try{
-      if(typeof showToast === 'function'){
-        showToast(msg, dur);
-        return;
-      }
-    }catch(e){}
-    const t = document.getElementById('toast');
-    if(!t) return;
-    t.textContent = msg;
-    t.classList.add('show');
-    clearTimeout(__motoToastTimer);
-    __motoToastTimer = setTimeout(() => t.classList.remove('show'), dur);
-  }
-  function rowLooksLikeMotoboys(row){
-    if(!row || typeof row !== 'object') return false;
-    return ('Entregador' in row) || ('Entrega' in row) || ('Valor Entregador' in row) || ('Nome da loja' in row) || ('Código da loja' in row) || ('Codigo da loja' in row);
-  }
-  function indexedText(value){ return value == null ? '' : String(value).trim(); }
-  function indexedNumber(value){
-    if(value == null || value === '') return 0;
-    if(typeof value === 'number') return Number.isFinite(value) ? value : 0;
-    const cleaned = String(value).trim().replace(/\s+/g,'').replace(/R\$/g,'').replace(/\./g,'').replace(',', '.').replace(/[^0-9.-]/g,'');
-    const num = Number(cleaned);
-    return Number.isFinite(num) ? num : 0;
-  }
-  function indexedRowLooksLikeMotoboys(row){
-    if(!row || typeof row !== 'object') return false;
-    return ('mt' in row) || ('tr' in row) || ('ve' in row) || ('lj' in row) || ('lc' in row) || ('cs' in row) || ('br' in row) || ('ed' in row) || ('cv' in row);
-  }
-  function isYesLike(value){
-    const s = indexedText(value).toUpperCase();
-    return s === 'S' || s === 'SIM' || s === 'Y' || s === 'YES' || s === 'TRUE' || s === '1';
-  }
-  const INDEX_KEY_TO_LOJA = {
-    'burger-matriz': 'Just Burger',
-    'burger-abc': 'Just Burger',
-    'burger-gru': 'Just Burger',
-    'gourmet': 'Gourmet',
-    'aham-forneria': 'Aham Forneria',
-    'aham-sushi': 'Aham Sushi'
-  };
-  const LOJA_TO_INDEX_KEYS = {
-    'Just Burger': ['burger-matriz','burger-abc','burger-gru'],
-    'Gourmet': ['gourmet'],
-    'Aham Forneria': ['aham-forneria'],
-    'Aham Sushi': ['aham-sushi']
-  };
-  function pad2(n){ return String(n).padStart(2,'0'); }
-  function getCurrentMonthKey(){
-    const now = new Date();
-    return `${now.getFullYear()}-${pad2(now.getMonth()+1)}`;
-  }
-  function monthKeyFromBrDate(br){
-    if(!br) return '';
-    const p = String(br).split('/');
-    if(p.length < 3) return '';
-    return `${p[2]}-${p[1]}`;
-  }
-  function monthKeysBetween(brDe, brAte){
-    const mkDe = monthKeyFromBrDate(brDe);
-    const mkAte = monthKeyFromBrDate(brAte || brDe);
-    if(!mkDe && !mkAte) return [getCurrentMonthKey()];
-    const ini = mkDe || mkAte;
-    const fim = mkAte || mkDe;
-    if(!ini || !fim) return [getCurrentMonthKey()];
-    const [y1,m1] = ini.split('-').map(Number);
-    const [y2,m2] = fim.split('-').map(Number);
-    const out = [];
-    let y = y1, m = m1;
-    while(y < y2 || (y === y2 && m <= m2)){
-      out.push(`${y}-${pad2(m)}`);
-      m++;
-      if(m > 12){ m = 1; y++; }
-      if(out.length > 24) break;
-    }
-    return out.length ? out : [getCurrentMonthKey()];
-  }
-  function getScopedMonthKeys(){
-    return monthKeysBetween(fDataDe, fDataAte);
-  }
-  function getScopedCompanyKeys(){
-    if(!fLojas.size || fLojas.has('todas')) return INDEXED_COMPANY_KEYS.slice();
-    const keys = new Set();
-    [...fLojas].forEach(loja => (LOJA_TO_INDEX_KEYS[loja] || []).forEach(k => keys.add(k)));
-    return keys.size ? [...keys] : INDEXED_COMPANY_KEYS.slice();
-  }
-  function formatMonthKey(monthKey){
-    const [y,m] = String(monthKey||'').split('-');
-    const nomes = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
-    const idx = Math.max(1, Math.min(12, Number(m)||1)) - 1;
-    return `${nomes[idx]}/${y||''}`;
-  }
-  function scopeLabel(companies, months){
-    const lojas = [...new Set(companies.map(k => INDEX_KEY_TO_LOJA[k]).filter(Boolean))];
-    const lojaTxt = (!lojas.length || lojas.length >= 4) ? 'todas as empresas' : lojas.join(' + ');
-    const mesTxt = months.length === 1 ? formatMonthKey(months[0]) : `${formatMonthKey(months[0])} → ${formatMonthKey(months[months.length-1])}`;
-    return { lojaTxt, mesTxt, full:`${lojaTxt} • ${mesTxt}` };
-  }
-  function getScopeState(){
-    const companies = getScopedCompanyKeys();
-    const months = getScopedMonthKeys();
-    const scopeKey = JSON.stringify({ companies:[...companies].sort(), months:[...months].sort() });
-    return { companies, months, scopeKey, label: scopeLabel(companies, months) };
-  }
-  async function fetchIndexedMonthRows(companyKey, monthKey){
-    try{
-      const rowsObj = await motoFetchJson(`${FIREBASE_URL}/${INDEX_ROOT}/companies/${companyKey}/months/${monthKey}/rows.json`) || {};
-      return Object.values(rowsObj || {});
-    }catch(err){
-      return [];
-    }
-  }
-  function ingestIndexedRows(rows, map, detail, stats, counters, seenPedidos, sourceTag){
+  function ingestMotoRows(rows, map, detail, stats, counters, seenPedidos, repId){
     rows.forEach((row, idx) => {
-      if(!indexedRowLooksLikeMotoboys(row)) return;
-      const pedidoBase = indexedText(row.p || row.pedido) || `${sourceTag||'idx'}_${idx}`;
-      const dataFmtPre = normalizaData(row.d || row.data);
-      const codigoLojaPre = row.lc || row.codigo_loja || row.codigoLoja || '';
-      const lojaNomePre = normalizaEmpresa(row.lj || row.loja_nome || row.loja || row.l || '', codigoLojaPre);
+      if(!rowLooksLikeMotoboys(row)) return;
+      const pedidoBase = row['Id do pedido no parceiro'] || row['Número do pedido no parceiro'] || row['Pedido'] || `${repId||'rep'}_${idx}`;
+      const dataFmtPre = normalizaData(row['Data da venda']||row['Data']);
+      const codigoLojaPre = row['Código da loja']||row['Codigo da loja']||row['Cód. loja']||null;
+      const lojaNomePre = normalizaEmpresa(row['Nome da loja']||'', codigoLojaPre);
       const pedidoKey = `${pedidoBase}|${dataFmtPre||'sem_data'}|${lojaNomePre}`;
-      if(seenPedidos && seenPedidos.has(pedidoKey)) return;
-      if(seenPedidos) seenPedidos.add(pedidoKey);
+      if(seenPedidos.has(pedidoKey)) return;
+      seenPedidos.add(pedidoKey);
 
       const dlKey = (dataFmtPre && lojaNomePre !== 'Desconhecida') ? `${dataFmtPre}|${lojaNomePre}` : '__sem_data__';
       if(!stats[dlKey]) stats[dlKey] = { cancelados:0, balcao:0, data:dataFmtPre, loja:lojaNomePre };
 
-      if(Number(row.c||0) === 1 || isYesLike(row.cancelado)){
+      const cancelado = String(row['Está cancelado']||row['Esta cancelado']||row['cancelado']||'N').trim().toUpperCase();
+      if(cancelado === 'S' || cancelado === 'SIM' || cancelado === '1'){
         stats[dlKey].cancelados++;
         counters.cancelados++;
         return;
       }
 
-      let entregador = indexedText(row.mt || row.entregador);
-      const rawEntText = row.mt === undefined && row.entregador === undefined ? '' : indexedText(row.mt || row.entregador);
-      if(entregador){
-        const s = entregador.trim();
-        if(!s || s.toUpperCase() === 'N/A' || /^\d{8,}$/.test(s)) entregador = '';
-        else entregador = s;
+      let entregador = '';
+      const rawEnt = row['Entregador'];
+      const rawEntText = rawEnt === null || rawEnt === undefined ? '' : String(rawEnt).trim();
+      if(rawEnt !== null && rawEnt !== undefined){
+        const s = String(rawEnt).trim();
+        if(s && s.toUpperCase() !== 'N/A' && !/^\d{8,}$/.test(s)) entregador = s;
       }
-      const entregueMarcado = Number(row.es||0) === 1 || isYesLike(row.entregue) || isYesLike(row.entrega_realizada);
+      const entregueMarcado = ['Entregue','Entrega realizada','Entrega realizada?'].some(col => isYesLike(row[col]));
       if(!entregador){
         if(!(rawEntText === '' && entregueMarcado)){
           stats[dlKey].balcao++;
@@ -6350,9 +6308,9 @@ function pagAbrirCadastroPix(){
       if(!dataFmtPre){ counters.semDado++; return; }
       if(lojaNomePre === 'Desconhecida'){ counters.semDado++; return; }
 
-      const turno = normalizaTurno(row.tr || row.turno);
-      const entregaVal = indexedNumber(row.e ?? row.valEntrega ?? row.entrega);
-      const nomeUp = entregador.toUpperCase();
+      const turno = normalizaTurno(row['Turno']);
+      const entregaVal = parseFloat(row['Entrega']||0)||0;
+      const nomeUp = String(entregador || '').toUpperCase();
       const key = `${nomeUp}|${dataFmtPre}|${turno}|${lojaNomePre}`;
       if(!map[key]) map[key] = {
         nome: nomeUp,
@@ -6374,21 +6332,104 @@ function pagAbrirCadastroPix(){
       else if(tRnd === 22) map[key].km_adic_22 += 1;
 
       detail.push({
-        nome: nomeUp, loja: lojaNomePre, turno, data: dataFmtPre,
-        consumidor: indexedText(row.cs || row.consumidor),
-        bairro: indexedText(row.br || row.bairro),
-        endereco: indexedText(row.ed || row.endereco),
-        canal: indexedText(row.cv || row.canal),
+        nome: nomeUp,
+        loja: lojaNomePre,
+        turno,
+        data: dataFmtPre,
+        consumidor: String(row['Consumidor']||row['consumidor']||'').trim(),
+        bairro: String(row['Bairro']||row['bairro']||'').trim(),
+        endereco: String(row['Endereço']||row['Endereco']||row['Endereço de entrega']||row['endereco']||'').trim(),
+        canal: String(row['Canal de venda']||row['Canal']||'').trim(),
         valEntrega: entregaVal,
-        valEnt: indexedNumber(row.ve ?? row.valEnt ?? row.valor_entregador)
+        valEnt: parseFloat(row['Valor Entregador']||0)||0
       });
     });
   }
+  function setAllCompanyButtonActive(){
+    const allBtn = document.querySelector('.btn-filter[data-filter="loja"][data-val="todas"]');
+    if(!allBtn) return;
+    if(!document.querySelector('.btn-filter[data-filter="loja"].active')){
+      allBtn.classList.add('active');
+      fLojas = new Set(['todas']);
+      fLoja = 'todas';
+      const cfgEmpresa = document.getElementById('cfgEmpresa');
+      if(cfgEmpresa) cfgEmpresa.value = 'todas';
+    }
+  }
+  async function loadMotoboysLegacyData(opts={}){
+    const { silent=false, force=false } = opts || {};
+    if(window.__motoLoading) return;
+    const statusEl = document.getElementById('uploadStatus');
+    const subEl = document.getElementById('headerSub');
+    if(statusEl) statusEl.textContent = '⏳ Carregando base de motoboys...';
+    if(subEl) subEl.textContent = 'Lendo relatórios de motoboys no Firebase';
+    window.__motoLoading = true;
+    try{
+      const reportsObj = await motoFetchJson(REPORTS_URL) || {};
+      const reports = Object.entries(reportsObj).map(([id, value]) => ({ id, ...(value||{}) }))
+        .filter(rep => rep && rep.status !== 'deletado' && rep.status !== 'substituido')
+        .sort((a,b)=>(Number(a.timestamp_upload||a.created_at||0))-(Number(b.timestamp_upload||b.created_at||0)));
+
+      const map = {};
+      const detail = [];
+      const stats = {};
+      const counters = { cancelados:0, balcao:0, semDado:0 };
+      const seenPedidos = new Set();
+      let totalLinhas = 0;
+      let validReports = 0;
+
+      for(let i=0;i<reports.length;i++){
+        const rep = reports[i];
+        if(statusEl) statusEl.textContent = `⏳ Carregando base de motoboys... ${i+1}/${reports.length}`;
+        const { rows, totalOriginal } = await motoFetchReportRows(rep);
+        totalLinhas += totalOriginal || rows.length;
+        if(rows.some(rowLooksLikeMotoboys)) validReports++;
+        ingestMotoRows(rows, map, detail, stats, counters, seenPedidos, rep.id);
+      }
+
+      RAW = Object.values(map).sort((a,b) => dateToNum(a.data) - dateToNum(b.data));
+      RAW_DETAIL = detail;
+      window._uploadStatsByDateLoja = {};
+      Object.entries(stats).forEach(([k,v]) => {
+        if(k !== '__sem_data__') window._uploadStatsByDateLoja[k] = { cancelados:v.cancelados||0, balcao:v.balcao||0 };
+      });
+      try{ localStorage.setItem('motoboys_raw_v2', JSON.stringify(RAW)); }catch(e){}
+      try{ localStorage.setItem('motoboys_raw_detail_v1', JSON.stringify(RAW_DETAIL)); }catch(e){}
+      try{ localStorage.setItem('motoboys_stats_dl_v1', JSON.stringify(window._uploadStatsByDateLoja)); }catch(e){}
+      try{ localStorage.setItem(CACHE_META_KEY, JSON.stringify({ updated_at: Date.now(), reports: reports.length, valid_reports: validReports, rows: totalLinhas })); }catch(e){}
+
+      setAllCompanyButtonActive();
+      applyLatestMonthRangeFromData(force);
+      reinitCal();
+      render();
+      ensureQuickPaymentButtons();
+      renderCal();
+
+      const totalEnt = RAW.reduce((s,r)=>s + Number(r.entregas||0), 0);
+      if(statusEl) statusEl.textContent = `${RAW.length.toLocaleString()} grupos · ${totalEnt.toLocaleString()} entregas`;
+      if(subEl) subEl.textContent = `${validReports}/${reports.length} relatório(s) com dados de motoboy • ${totalLinhas.toLocaleString()} linha(s) lidas`;
+      if(!silent) motoToast(`✅ Base de motoboys sincronizada com ${totalEnt.toLocaleString()} entregas.`, 3500);
+    }catch(err){
+      console.error(err);
+      const statusEl2 = document.getElementById('uploadStatus');
+      const subEl2 = document.getElementById('headerSub');
+      if(statusEl2) statusEl2.textContent = '❌ Erro ao carregar a base de motoboys';
+      if(subEl2) subEl2.textContent = 'Verifique a conexão com o Firebase';
+      if(!silent) motoToast('❌ Não foi possível carregar a base de motoboys.', 5000);
+      render();
+    }finally{
+      window.__motoLoading = false;
+    }
+  }
+
   window.pagPresetHoje = function(){
     const all = getAllDates();
     if(!all.length) return;
     const last = all[all.length-1];
-    PAG_FILTROS.de = last; PAG_FILTROS.ate = last; pagUpdateCalLabel(); pagRender();
+    PAG_FILTROS.de = last;
+    PAG_FILTROS.ate = last;
+    pagUpdateCalLabel();
+    pagRender();
   };
   window.pagPresetSemana = function(){
     const all = getAllDates();
@@ -6404,203 +6445,51 @@ function pagAbrirCadastroPix(){
     pagUpdateCalLabel();
     pagRender();
   };
-  function ingestMotoRows(rows, map, detail, stats, counters, seenPedidos, repId){
-    rows.forEach((row, idx) => {
-      if(!rowLooksLikeMotoboys(row)) return;
-      const pedidoBase = row['Id do pedido no parceiro'] || row['Número do pedido no parceiro'] || row['Pedido'] || `${repId||'rep'}_${idx}`;
-      const dataPedido = normalizaData(row['Data da venda']||row['Data']);
-      const codigoPedido = row['Código da loja']||row['Codigo da loja']||row['Cód. loja']||'';
-      const lojaPedido = normalizaEmpresa(row['Nome da loja']||'', codigoPedido);
-      const pedidoKey = `${pedidoBase}|${dataPedido||'sem_data'}|${lojaPedido}`;
-      if(seenPedidos && seenPedidos.has(pedidoKey)) return;
-      if(seenPedidos) seenPedidos.add(pedidoKey);
-      const dataFmtPre  = normalizaData(row['Data da venda']||row['Data']);
-      const codigoLojaPre = row['Código da loja']||row['Codigo da loja']||row['Cód. loja']||null;
-      const lojaNomePre   = normalizaEmpresa(row['Nome da loja']||'', codigoLojaPre);
-      const dlKey = (dataFmtPre && lojaNomePre !== 'Desconhecida') ? `${dataFmtPre}|${lojaNomePre}` : '__sem_data__';
-      if(!stats[dlKey]) stats[dlKey] = { cancelados:0, balcao:0, data:dataFmtPre, loja:lojaNomePre };
 
-      const cancelado = String(row['Está cancelado']||row['Esta cancelado']||'N').toUpperCase().trim();
-      if(cancelado === 'S' || cancelado === 'SIM'){
-        stats[dlKey].cancelados++;
-        counters.cancelados++;
-        return;
-      }
-
-      let entregador = '';
-      const rawEnt = row['Entregador'];
-      const rawEntText = rawEnt === null || rawEnt === undefined ? '' : String(rawEnt).trim();
-      if(rawEnt !== null && rawEnt !== undefined){
-        const s = String(rawEnt).trim();
-        if(s && s.toUpperCase() !== 'N/A' && !/^\d{8,}$/.test(s)) entregador = s;
-      }
-      const entregueMarcado = ['Entregue','Entrega realizada','Entrega realizada?']
-        .some(col => isYesLike(row[col]));
-      if(!entregador){
-        if(!(rawEntText === '' && entregueMarcado)){
-          stats[dlKey].balcao++;
-          counters.balcao++;
-          return;
-        }
-      }
-
-      if(!dataFmtPre){ counters.semDado++; return; }
-      if(lojaNomePre === 'Desconhecida'){ counters.semDado++; return; }
-
-      const turno   = normalizaTurno(row['Turno']);
-      const entregaVal = parseFloat(row['Entrega']||0)||0;
-      const nomeUp = entregador.toUpperCase();
-      const key = `${nomeUp}|${dataFmtPre}|${turno}|${lojaNomePre}`;
-      if(!map[key]) map[key] = {
-        nome: nomeUp,
-        loja: lojaNomePre,
-        turno,
-        data: dataFmtPre,
-        dia_semana: getDiaSemana(dataFmtPre),
-        entregas: 0,
-        taxa_recebida: 0,
-        km_adic_8: 0, km_adic_9: 0, km_adic_12: 0, km_adic_13: 0, km_adic_22: 0
-      };
-      map[key].entregas += 1;
-      map[key].taxa_recebida += entregaVal;
-      const tRnd = Math.round(entregaVal);
-      if(tRnd === 8) map[key].km_adic_8 += 1;
-      else if(tRnd === 9) map[key].km_adic_9 += 1;
-      else if(tRnd === 12) map[key].km_adic_12 += 1;
-      else if(tRnd === 13) map[key].km_adic_13 += 1;
-      else if(tRnd === 22) map[key].km_adic_22 += 1;
-      detail.push({
-        nome: nomeUp, loja: lojaNomePre, turno, data: dataFmtPre,
-        consumidor: String(row['Consumidor']||row['consumidor']||'').trim(),
-        bairro: String(row['Bairro']||row['bairro']||'').trim(),
-        endereco: String(row['Endereço']||row['Endereco']||row['Endereço de entrega']||row['endereco']||'').trim(),
-        canal: String(row['Canal de venda']||row['Canal']||'').trim(),
-        valEntrega: entregaVal,
-        valEnt: parseFloat(row['Valor Entregador']||0)||0
-      });
-    });
-  }
-  async function loadFromFirebaseMotoboys(opts={}){
-    const { force=false, silent=false } = opts || {};
-    const statusEl = document.getElementById('uploadStatus');
-    const subEl = document.getElementById('headerSub');
-    const scope = getScopeState();
-    if(!force && window.__motoLastScopeKey === scope.scopeKey && RAW.length) return;
-    const loadToken = Date.now() + '_' + Math.random().toString(36).slice(2,8);
-    window.__motoLoadToken = loadToken;
-    if(statusEl) statusEl.textContent = `⏳ Carregando ${scope.label.full}...`;
-    if(subEl) subEl.textContent = 'Lendo apenas o recorte selecionado da base indexada';
-    try{
-      const jobs = [];
-      scope.companies.forEach(companyKey => scope.months.forEach(monthKey => jobs.push({ companyKey, monthKey })));
-      const results = await Promise.all(jobs.map(async job => ({ ...job, rows: await fetchIndexedMonthRows(job.companyKey, job.monthKey) })));
-      if(window.__motoLoadToken !== loadToken) return;
-
-      const map = {};
-      const detail = [];
-      const stats = {};
-      const counters = {cancelados:0, balcao:0, semDado:0};
-      const seenPedidos = new Set();
-      let indexedRows = 0;
-      let loadedMonths = 0;
-      let loadedCompanies = new Set();
-
-      results.forEach(({companyKey, monthKey, rows}) => {
-        if(rows && rows.length){
-          loadedCompanies.add(companyKey);
-          loadedMonths++;
-          indexedRows += rows.length;
-          ingestIndexedRows(rows, map, detail, stats, counters, seenPedidos, `${companyKey}_${monthKey}`);
-        }
-      });
-
-      RAW = Object.values(map).sort((a,b) => dateToNum(a.data) - dateToNum(b.data));
-      RAW_DETAIL = detail;
-      window._uploadStatsByDateLoja = {};
-      Object.entries(stats).forEach(([k,v]) => {
-        if(k !== '__sem_data__') window._uploadStatsByDateLoja[k] = {cancelados:v.cancelados||0, balcao:v.balcao||0};
-      });
-      window.__motoLastScopeKey = scope.scopeKey;
-      try{ localStorage.setItem('motoboys_raw_v2', JSON.stringify(RAW)); }catch(e){}
-      try{ localStorage.setItem('motoboys_raw_detail_v1', JSON.stringify(RAW_DETAIL)); }catch(e){}
-      try{ localStorage.setItem('motoboys_stats_dl_v1', JSON.stringify(window._uploadStatsByDateLoja)); }catch(e){}
-      try{ localStorage.setItem('motoboys_scope_meta_v1', JSON.stringify({scopeKey:scope.scopeKey, companies:scope.companies, months:scope.months, loadedAt:Date.now()})); }catch(e){}
-
-      const totalEnt = RAW.reduce((s,r)=>s+r.entregas,0);
-      if(statusEl) statusEl.textContent = `${RAW.length.toLocaleString()} grupos · ${totalEnt.toLocaleString()} entregas`;
-      if(subEl) subEl.textContent = [
-        `${scope.label.full}`,
-        `${indexedRows.toLocaleString()} linhas indexadas`,
-        `${loadedMonths} recorte(s) mensais`,
-        `${loadedCompanies.size} empresa(s)`
-      ].join(' • ');
-      try{ reinitCal(); }catch(uiErr){ console.error('Falha ao reiniciar calendário do motoboys', uiErr); }
-      try{ syncDateInputsFromState(); }catch(uiErr){ console.error('Falha ao sincronizar datas do motoboys', uiErr); }
-      try{ render(); }catch(uiErr){ console.error('Falha ao renderizar dashboard de motoboys', uiErr); }
-      try{ ensureQuickPaymentButtons(); }catch(uiErr){ console.error('Falha ao montar atalhos do motoboys', uiErr); }
-
-      if(!silent){
-        if(indexedRows) motoToast(`✅ Base carregada: ${scope.label.full}.`, 2500);
-        else motoToast(`⚠️ Nenhuma linha encontrada para ${scope.label.full}.`, 3500);
-      }
-    }catch(err){
-      console.error(err);
-      if(window.__motoLoadToken !== loadToken) return;
-      if(statusEl) statusEl.textContent = '❌ Falha ao ler a base indexada';
-      if(subEl) subEl.textContent = 'Verifique a conexão com o banco';
-      if(!RAW.length){ RAW = []; RAW_DETAIL = []; }
-      try{ render(); }catch(uiErr){ console.error('Falha ao renderizar estado de erro do motoboys', uiErr); }
-      if(!silent) motoToast('❌ Erro ao carregar a base de motoboys.', 5000);
-    }
-  }
-  let __motoReloadTimer = null;
-  function scheduleMotoReload(reason='filtro', delay=180){
-    clearTimeout(__motoReloadTimer);
-    __motoReloadTimer = setTimeout(() => loadFromFirebaseMotoboys({ force:true, silent:false, reason }), delay);
-  }
   document.querySelectorAll('.btn-upload').forEach((btn, idx) => { if(idx < 2) btn.style.display = 'none'; });
   const uploadDrop = document.getElementById('uploadDrop'); if(uploadDrop) uploadDrop.style.display = 'none';
   const uploadInput = document.getElementById('uploadInput'); if(uploadInput) uploadInput.remove();
+
+  const __origClearDate = clearDate;
+  clearDate = function(){
+    __origClearDate();
+    applyLatestMonthRangeFromData(true);
+    render();
+    renderCal();
+  };
+
   window.clearAllData = function(){
-    if(!confirm('Recarregar a base indexada do recorte atual? Isso limpará apenas o cache local.')) return;
+    if(!confirm('Recarregar a base de motoboys? Isso limpará apenas o cache local.')) return;
     try{
       localStorage.removeItem('motoboys_raw_v2');
       localStorage.removeItem('motoboys_raw_detail_v1');
       localStorage.removeItem('motoboys_stats_dl_v1');
-      localStorage.removeItem('motoboys_scope_meta_v1');
+      localStorage.removeItem(CACHE_META_KEY);
     }catch(e){}
-    window.__motoLastScopeKey = '';
-    loadFromFirebaseMotoboys({ force:true, silent:false });
+    RAW = [];
+    RAW_DETAIL = [];
+    window._uploadStatsByDateLoja = {};
+    loadMotoboysLegacyData({ force:true, silent:false });
   };
-  document.addEventListener('click', function(e){
-    const btn = e.target.closest('.btn-filter[data-filter="loja"]');
-    if(!btn) return;
-    setTimeout(() => scheduleMotoReload('empresa', 80), 0);
-  });
-  const __origClearDate = clearDate;
-  clearDate = function(){
-    __origClearDate();
-    scheduleMotoReload('periodo', 80);
-  };
-  const __origApplyRange = applyRange;
-  applyRange = function(){
-    __origApplyRange();
-    scheduleMotoReload('periodo', 80);
-  };
-  const __origApplyVisibleDateRange = window.applyVisibleDateRange;
-  window.applyVisibleDateRange = function(){
-    __origApplyVisibleDateRange();
-    scheduleMotoReload('periodo', 80);
-  };
-  function startMotoFirebaseLoad(){
-    if(window.__motoFirebaseStarted) return;
-    window.__motoFirebaseStarted = true;
-    loadFromFirebaseMotoboys({ force:true, silent:true });
+
+  setAllCompanyButtonActive();
+  if(RAW.length){
+    applyLatestMonthRangeFromData(false);
+    reinitCal();
+    render();
+    ensureQuickPaymentButtons();
+    renderCal();
+  }
+
+  function startMotoLoad(){
+    if(window.__motoInitialLoadStarted) return;
+    window.__motoInitialLoadStarted = true;
+    loadMotoboysLegacyData({ force:false, silent:true });
   }
   if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', () => setTimeout(startMotoFirebaseLoad, 0), { once:true });
+    document.addEventListener('DOMContentLoaded', () => setTimeout(startMotoLoad, 0), { once:true });
   }else{
-    setTimeout(startMotoFirebaseLoad, 0);
+    setTimeout(startMotoLoad, 0);
   }
 })();
 </script>
