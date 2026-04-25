@@ -1974,13 +1974,23 @@ function normalizaTurno(t){
 // Mapeamento de códigos de loja para empresas
 const LOJA_MAP = {
   '21870': 'Just Burger',   // Delivery Direto Just Burger
+  '8f8983b5-89d1-4a88-9e3a-88dc8c8d76de': 'Just Burger',
+  'b7ef408a-49bd-46a6-aa5a-e091dfe64fdb': 'Gourmet',
+  '53551890-f285-4bb3-bcb5-d5cd645550a6': 'Aham Forneria',
+  '184af09d-8d79-469f-a5f0-d3b228534c7e': 'Aham Sushi',
   'just burger': 'Just Burger',
+  'just burger zona leste': 'Just Burger',
   'gourmet': 'Gourmet',
+  'just gourmet': 'Gourmet',
+  'just gourmet comida brasileira feijoada': 'Gourmet',
   'forneria': 'Aham Forneria',
+  'aham pizza forneria': 'Aham Forneria',
+  'aham forneria': 'Aham Forneria',
   'esfiha': 'Aham Forneria',
+  'aham esfiha - penha': 'Aham Forneria',
+  'aham esfiha penha': 'Aham Forneria',
   'sushi': 'Aham Sushi',
   'aham sushi': 'Aham Sushi',
-  'aham forneria': 'Aham Forneria',
 };
 
 function normalizaEmpresa(nomeLoja, codigoLoja){
@@ -2039,9 +2049,9 @@ if(_uploadInputChangeEl){
 
 // Mapeamento lojaNome (da aba eficiência) → chave PEMPS (da aba pagamentos)
 const _LOJA_TO_EMP = {
-  'just burger':'burger', 'burger':'burger',
-  'gourmet':'gourmet', 'just gourmet':'gourmet',
-  'aham forneria':'forneria', 'forneria':'forneria',
+  'just burger':'burger', 'burger':'burger', 'just burger zona leste':'burger',
+  'gourmet':'gourmet', 'just gourmet':'gourmet', 'just gourmet comida brasileira feijoada':'gourmet',
+  'aham forneria':'forneria', 'forneria':'forneria', 'aham pizza forneria':'forneria', 'esfiha':'forneria', 'aham esfiha':'forneria',
   'aham sushi':'sushi', 'sushi':'sushi'
 };
 
@@ -5409,27 +5419,7 @@ function pagMotoHtml(dIdx,eIdx,mIdx,dt,nome,d,empM,itensEmp){
 }
 
 function pagBuildDashboardAlignedDayMap(dt){
-  const efSet = (PAG_FILTROS.emps && !PAG_FILTROS.emps.has('todas')) ? new Set(PAG_FILTROS.emps) : null;
-  const filtroNomeRaw = String(PAG_FILTROS.nome || '').trim();
-  const filtroNomeNorm = filtroNomeRaw ? pagNomeNorm(filtroNomeRaw) : '';
-  const numMatch = filtroNomeRaw.match(/^#?(\d+)$/);
-  const rowsDia = RAW.filter(r => {
-    if(r.data !== dt) return false;
-    if(isNomeEspecial(r.nome)) return false;
-    const emp = PAG_EMP_LOJA[r.loja];
-    if(efSet && !efSet.has(emp)) return false;
-    if(PAG_FILTROS.turno !== 'todos' && r.turno !== PAG_FILTROS.turno) return false;
-    if(filtroNomeRaw){
-      if(numMatch){
-        const numBusca = parseInt(numMatch[1], 10);
-        const numMoto = window._motoNumMap ? window._motoNumMap[nomeNorm(r.nome)] : null;
-        if(numMoto !== numBusca) return false;
-      }else if(!pagNomeNorm(r.nome).includes(filtroNomeNorm)){
-        return false;
-      }
-    }
-    return true;
-  });
+  const rowsDia = filtered().filter(r => r.data === dt);
   const pivDia = pivot(rowsDia, [dt]);
   const map = {};
   pivDia.forEach(m => {
@@ -6802,11 +6792,29 @@ function pagAbrirCadastroPix(){
     renderCal();
   }
 
+  let __motoAutoReloadLock = false;
+  let __motoLastAutoReloadAt = 0;
+  function maybeReloadMotoData(){
+    const now = Date.now();
+    if(window.__motoLoading || __motoAutoReloadLock) return;
+    if(now - __motoLastAutoReloadAt < 20000) return;
+    __motoLastAutoReloadAt = now;
+    __motoAutoReloadLock = true;
+    Promise.resolve(loadMotoboysLegacyData({ force:true, silent:true }))
+      .catch(()=>{})
+      .finally(()=>{ __motoAutoReloadLock = false; });
+  }
   function startMotoLoad(){
     if(window.__motoInitialLoadStarted) return;
     window.__motoInitialLoadStarted = true;
     setTimeout(() => loadMotoboysLegacyData({ force:false, silent:true }), 60);
   }
+  document.addEventListener('visibilitychange', () => {
+    if(document.visibilityState === 'visible' && window.__motoInitialLoadStarted) maybeReloadMotoData();
+  });
+  window.addEventListener('focus', () => {
+    if(window.__motoInitialLoadStarted) maybeReloadMotoData();
+  });
   if(document.readyState === 'loading'){
     document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(() => requestAnimationFrame(startMotoLoad)), { once:true });
   }else{
