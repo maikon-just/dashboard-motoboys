@@ -5384,13 +5384,14 @@ function pagRender(){
 
   if(modoMulti){
     // ════════════════════════════════════════════════════════
-    // MODO MULTI-EMPRESA: aplica a MESMA lógica fuzzy da tela de desempenho
-    // (nomesIguais + construirGruposNomes), preservando prioridade do cadastro
+    // MODO MULTI-EMPRESA: compila motoboys pelo número de cadastro
+    // Mostra lista única por dia — sem separador por empresa
     // ════════════════════════════════════════════════════════
 
+    // Para cada dia, agrupa motoboys pelo número de cadastro (ou nome normalizado se não houver)
     const diasPivot={};
     diasOrdenados.forEach(dt=>{
-      const entradas=[];
+      const grupoMap={}; // chave = numCadastro ou nomeNorm → { nome, emps:[{emp,d}], ... }
       ef.forEach(emp=>{
         Object.values(PAG_DATA[emp]).forEach(m=>{
           if(!m.dias[dt]) return;
@@ -5401,33 +5402,25 @@ function pagRender(){
           }
           const nn=pagNomeNorm(m.nome);
           if(filtroNome&&!nn.includes(filtroNome)) return;
-          entradas.push({ emp, m, d, nn, num: pagNumCadastro(m.nome) });
+          // Chave de agrupamento: número de cadastro ou nome normalizado
+          const num=pagNumCadastro(m.nome);
+          const gKey=num||nn;
+          if(!grupoMap[gKey]){
+            grupoMap[gKey]={nome:m.nome,gKey,emps:[],totalValEnt:0,totalQtd:0,turnos:new Set()};
+          }
+          // Usa o nome mais longo (mais completo)
+          if(m.nome.length>grupoMap[gKey].nome.length) grupoMap[gKey].nome=m.nome;
+          const nn2=pagNomeNorm(m.nome);
+          const eKey=nn2+'|'+dt+'|'+emp;
+          const extra=parseFloat(pagExtrasMap[eKey]||0);
+          const chuvaVal=parseFloat(pagExtrasMap[eKey+'|chuva']||0);
+          grupoMap[gKey].emps.push({emp,d,eKey,extra,chuvaVal,nn:nn2});
+          grupoMap[gKey].totalValEnt+=d.totalValEnt+extra+chuvaVal;
+          grupoMap[gKey].totalQtd+=d.qtd;
+          const ts=d.turnos?[...d.turnos]:[d.turno||'Noite'];
+          ts.forEach(t=>grupoMap[gKey].turnos.add(t));
         });
       });
-
-      if(!entradas.length) return;
-
-      const nomesSemCadastro=[...new Set(entradas.filter(x=>!x.num).map(x=>x.nn))];
-      const mapaFuzzy=nomesSemCadastro.length && typeof construirGruposNomes === 'function'
-        ? construirGruposNomes(nomesSemCadastro)
-        : Object.fromEntries(nomesSemCadastro.map(nn=>[nn,nn]));
-
-      const grupoMap={};
-      entradas.forEach(({emp,m,d,nn,num})=>{
-        const repNome = num ? nn : (mapaFuzzy[nn] || nn);
-        const gKey = num ? `NUM:${num}` : `NOME:${repNome}`;
-        if(!grupoMap[gKey]) grupoMap[gKey]={nome:m.nome,gKey,emps:[],totalValEnt:0,totalQtd:0,turnos:new Set()};
-        if(m.nome.length>grupoMap[gKey].nome.length) grupoMap[gKey].nome=m.nome;
-        const eKey=nn+'|'+dt+'|'+emp;
-        const extra=parseFloat(pagExtrasMap[eKey]||0);
-        const chuvaVal=parseFloat(pagExtrasMap[eKey+'|chuva']||0);
-        grupoMap[gKey].emps.push({emp,d,eKey,extra,chuvaVal,nn});
-        grupoMap[gKey].totalValEnt+=d.totalValEnt+extra+chuvaVal;
-        grupoMap[gKey].totalQtd+=d.qtd;
-        const ts=d.turnos?[...d.turnos]:[d.turno||'Noite'];
-        ts.forEach(t=>grupoMap[gKey].turnos.add(t));
-      });
-
       if(Object.keys(grupoMap).length>0){
         diasPivot[dt]=Object.values(grupoMap).sort((a,b)=>b.totalValEnt-a.totalValEnt);
       }
@@ -6258,23 +6251,6 @@ function pagAbrirCadastroPix(){
         PAG_FILTROS.ate = range.to;
       }
     }
-    const lojasAtivas = (typeof fLojas !== 'undefined' && fLojas instanceof Set) ? [...fLojas] : [];
-    if(force || !PAG_FILTROS.emps || PAG_FILTROS.emps.size === 0 || PAG_FILTROS.emps.has('todas')){
-      if(!lojasAtivas.length || lojasAtivas.includes('todas')){
-        PAG_FILTROS.emps = new Set(['todas']);
-      }else{
-        const mapped = lojasAtivas.map(loja => PAG_EMP_LOJA[loja]).filter(Boolean);
-        PAG_FILTROS.emps = mapped.length ? new Set(mapped) : new Set(['todas']);
-      }
-    }else if(lojasAtivas.length){
-      if(lojasAtivas.includes('todas')) PAG_FILTROS.emps = new Set(['todas']);
-      else {
-        const mapped = lojasAtivas.map(loja => PAG_EMP_LOJA[loja]).filter(Boolean);
-        if(mapped.length) PAG_FILTROS.emps = new Set(mapped);
-      }
-    }
-    PAG_FILTROS.turno = (typeof fTurno !== 'undefined' && fTurno) ? fTurno : 'todos';
-    PAG_FILTROS.nome = (typeof fNome !== 'undefined' && fNome) ? String(fNome).trim() : '';
     pagCalTempDe = PAG_FILTROS.de || '';
     pagCalTempAte = PAG_FILTROS.ate || '';
     const refDate = PAG_FILTROS.ate || PAG_FILTROS.de;
@@ -6289,18 +6265,8 @@ function pagAbrirCadastroPix(){
     }
     const pde = document.getElementById('pcal-de');
     const pate = document.getElementById('pcal-ate');
-    const pnome = document.getElementById('pag-search-nome');
     if(pde) pde.value = pagCalTempDe;
     if(pate) pate.value = pagCalTempAte;
-    if(pnome) pnome.value = PAG_FILTROS.nome || '';
-    document.querySelectorAll('#pag-emp-btns .pbf').forEach(b=>{
-      const emp = b.dataset.emp;
-      b.classList.toggle('active', emp==='todas' ? PAG_FILTROS.emps.has('todas') : PAG_FILTROS.emps.has(emp));
-    });
-    document.querySelectorAll('#pag-turno-btns .pbf').forEach(b=>{
-      const turno = b.dataset.turno;
-      b.classList.toggle('active', (PAG_FILTROS.turno||'todos') === turno);
-    });
     pagUpdateCalLabel();
   }
   function renderPagLoadingState(msg='Preparando pagamentos...'){
@@ -6631,7 +6597,8 @@ function pagAbrirCadastroPix(){
 
   setAllCompanyButtonActive();
   if(RAW.length){
-    applyCurrentMonthRangeNow(false);
+    applyLatestMonthRangeFromData(false);
+    reinitCal();
     render();
     ensureQuickPaymentButtons();
     renderCal();
