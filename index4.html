@@ -5060,11 +5060,7 @@ function abrirPagamentos(){
   if(!overlay) return;
   overlay.classList.add('show');
   document.body.style.overflow='hidden';
-  const dashSnapshot = getDashboardFilterSnapshot();
-  const dashSig = getDashboardFilterSignature(dashSnapshot);
-  const shouldInheritFromDashboard = dashSig !== __pagLastInheritedDashSig;
-  syncPagFiltersFromDashboard(shouldInheritFromDashboard, dashSnapshot);
-  if(shouldInheritFromDashboard) __pagLastInheritedDashSig = dashSig;
+  syncPagFiltersFromDashboard(true);
   pagRenderCal();
   if(__pagCacheReady && __pagCacheSig === currentMotoCacheSignature()){
     pagRender();
@@ -5409,27 +5405,7 @@ function pagMotoHtml(dIdx,eIdx,mIdx,dt,nome,d,empM,itensEmp){
 }
 
 function pagBuildDashboardAlignedDayMap(dt){
-  const efSet = (PAG_FILTROS.emps && !PAG_FILTROS.emps.has('todas')) ? new Set(PAG_FILTROS.emps) : null;
-  const filtroNomeRaw = String(PAG_FILTROS.nome || '').trim();
-  const filtroNomeNorm = filtroNomeRaw ? pagNomeNorm(filtroNomeRaw) : '';
-  const numMatch = filtroNomeRaw.match(/^#?(\d+)$/);
-  const rowsDia = RAW.filter(r => {
-    if(r.data !== dt) return false;
-    if(isNomeEspecial(r.nome)) return false;
-    const emp = PAG_EMP_LOJA[r.loja];
-    if(efSet && !efSet.has(emp)) return false;
-    if(PAG_FILTROS.turno !== 'todos' && r.turno !== PAG_FILTROS.turno) return false;
-    if(filtroNomeRaw){
-      if(numMatch){
-        const numBusca = parseInt(numMatch[1], 10);
-        const numMoto = window._motoNumMap ? window._motoNumMap[nomeNorm(r.nome)] : null;
-        if(numMoto !== numBusca) return false;
-      }else if(!pagNomeNorm(r.nome).includes(filtroNomeNorm)){
-        return false;
-      }
-    }
-    return true;
-  });
+  const rowsDia = filtered().filter(r => r.data === dt);
   const pivDia = pivot(rowsDia, [dt]);
   const map = {};
   pivDia.forEach(m => {
@@ -6393,48 +6369,29 @@ function pagAbrirCadastroPix(){
     __pagCacheReady = false;
     __pagSyncPromise = null;
   }
-  let __pagLastInheritedDashSig = '';
-  function getDashboardFilterSnapshot(){
+  function syncPagFiltersFromDashboard(force=false){
     const dashBounds = (typeof getDashboardDateBounds === 'function') ? getDashboardDateBounds() : { de: fDataDe || '', ate: fDataAte || '' };
-    const lojasAtivas = (typeof fLojas !== 'undefined' && fLojas instanceof Set) ? [...fLojas] : [];
-    const lojasNorm = (!lojasAtivas.length || lojasAtivas.includes('todas')) ? ['todas'] : lojasAtivas.slice();
-    const mapped = lojasNorm.includes('todas') ? ['todas'] : lojasNorm.map(loja => PAG_EMP_LOJA[loja]).filter(Boolean);
-    return {
-      de: dashBounds.de || '',
-      ate: dashBounds.ate || dashBounds.de || '',
-      lojas: lojasNorm,
-      emps: mapped.length ? [...new Set(mapped)] : ['todas'],
-      turno: (typeof fTurno !== 'undefined' && fTurno) ? fTurno : 'todos',
-      nome: (typeof fNome !== 'undefined' && fNome) ? String(fNome).trim() : ''
-    };
-  }
-  function getDashboardFilterSignature(snapshot){
-    const s = snapshot || getDashboardFilterSnapshot();
-    return JSON.stringify({
-      de: s.de || '',
-      ate: s.ate || '',
-      lojas: [...(s.lojas || ['todas'])].sort(),
-      emps: [...(s.emps || ['todas'])].sort(),
-      turno: s.turno || 'todos',
-      nome: s.nome || ''
-    });
-  }
-  function syncPagFiltersFromDashboard(force=false, snapshot=null){
-    const dash = snapshot || getDashboardFilterSnapshot();
     if(force || (!PAG_FILTROS.de && !PAG_FILTROS.ate)){
-      PAG_FILTROS.de = dash.de || '';
-      PAG_FILTROS.ate = dash.ate || PAG_FILTROS.de || '';
+      PAG_FILTROS.de = dashBounds.de || '';
+      PAG_FILTROS.ate = dashBounds.ate || PAG_FILTROS.de || '';
     }
-    const mappedSet = new Set((dash.emps && dash.emps.length) ? dash.emps : ['todas']);
+    const lojasAtivas = (typeof fLojas !== 'undefined' && fLojas instanceof Set) ? [...fLojas] : [];
     if(force || !PAG_FILTROS.emps || PAG_FILTROS.emps.size === 0 || PAG_FILTROS.emps.has('todas')){
-      PAG_FILTROS.emps = mappedSet;
+      if(!lojasAtivas.length || lojasAtivas.includes('todas')){
+        PAG_FILTROS.emps = new Set(['todas']);
+      }else{
+        const mapped = lojasAtivas.map(loja => PAG_EMP_LOJA[loja]).filter(Boolean);
+        PAG_FILTROS.emps = mapped.length ? new Set(mapped) : new Set(['todas']);
+      }
+    }else if(lojasAtivas.length){
+      if(lojasAtivas.includes('todas')) PAG_FILTROS.emps = new Set(['todas']);
+      else {
+        const mapped = lojasAtivas.map(loja => PAG_EMP_LOJA[loja]).filter(Boolean);
+        if(mapped.length) PAG_FILTROS.emps = new Set(mapped);
+      }
     }
-    if(force || !PAG_FILTROS.turno || PAG_FILTROS.turno === 'todos'){
-      PAG_FILTROS.turno = dash.turno || 'todos';
-    }
-    if(force || !String(PAG_FILTROS.nome || '').trim()){
-      PAG_FILTROS.nome = dash.nome || '';
-    }
+    PAG_FILTROS.turno = (typeof fTurno !== 'undefined' && fTurno) ? fTurno : 'todos';
+    PAG_FILTROS.nome = (typeof fNome !== 'undefined' && fNome) ? String(fNome).trim() : '';
     pagCalTempDe = PAG_FILTROS.de || '';
     pagCalTempAte = PAG_FILTROS.ate || '';
     const refDate = PAG_FILTROS.ate || PAG_FILTROS.de;
