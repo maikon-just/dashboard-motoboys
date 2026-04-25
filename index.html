@@ -6541,7 +6541,7 @@ function pagAbrirCadastroPix(){
   }
   function indexedRowLooksLikeMotoboys(row){
     if(!row || typeof row !== 'object') return false;
-    return ('mt' in row) || ('tr' in row) || ('ve' in row) || ('lj' in row) || ('lc' in row) || ('cs' in row) || ('br' in row) || ('ed' in row) || ('cv' in row) || (('p' in row) && ('d' in row) && (('l' in row) || ('lj' in row)));
+    return ('mt' in row) || ('tr' in row) || ('ve' in row) || ('lj' in row) || ('lc' in row) || ('cs' in row) || ('br' in row) || ('ed' in row) || ('cv' in row);
   }
   async function fetchIndexedCompanyMonths(companyKey){
     try{
@@ -6571,28 +6571,22 @@ function pagAbrirCadastroPix(){
         return;
       }
 
-      const hasExplicitMoto = ('mt' in row) || ('entregador' in row);
       let entregador = indexedText(row.mt || row.entregador);
       if(entregador){
         const s = entregador.trim();
         if(!s || s.toUpperCase() === 'N/A' || /^\d{8,}$/.test(s)) entregador = '';
         else entregador = s;
       }
-      const origemIndexadaSemMoto = !entregador && !hasExplicitMoto && ('p' in row) && ('d' in row);
       if(!entregador){
-        if(origemIndexadaSemMoto) entregador = `SEM MOTOBOY • ${lojaNomePre}`;
-        else {
-          stats[dlKey].balcao++;
-          counters.balcao++;
-          return;
-        }
+        stats[dlKey].balcao++;
+        counters.balcao++;
+        return;
       }
 
       if(!dataFmtPre){ counters.semDado++; return; }
       if(lojaNomePre === 'Desconhecida'){ counters.semDado++; return; }
 
-      const turnoRaw = row.tr || row.turno || (origemIndexadaSemMoto ? 'Não informado' : '');
-      const turno = (turnoRaw ? normalizaTurno(turnoRaw) : '') || 'Não informado';
+      const turno = normalizaTurno(row.tr || row.turno);
       const entregaVal = indexedNumber(row.e ?? row.valEntrega ?? row.entrega);
       const nomeUp = entregador.toUpperCase();
       const key = `${nomeUp}|${dataFmtPre}|${turno}|${lojaNomePre}`;
