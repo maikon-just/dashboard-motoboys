@@ -5445,6 +5445,104 @@ function pagBuildDashboardAlignedDayMap(dt){
   return map;
 }
 
+function pagGetDashboardAlignedContext(){
+  const savedDe = fDataDe;
+  const savedAte = fDataAte;
+  const savedTurno = fTurno;
+  const savedNome = fNome;
+  const savedLojas = (typeof fLojas !== 'undefined' && fLojas instanceof Set) ? new Set([...fLojas]) : new Set(['todas']);
+  const empToLoja = {burger:'Just Burger', gourmet:'Gourmet', forneria:'Aham Forneria', sushi:'Aham Sushi'};
+  try{
+    fDataDe = PAG_FILTROS.de || '';
+    fDataAte = PAG_FILTROS.ate || '';
+    fTurno = (PAG_FILTROS.turno && PAG_FILTROS.turno !== 'todos') ? PAG_FILTROS.turno : '';
+    fNome = String(PAG_FILTROS.nome || '').trim();
+    const lojasSel = PAG_FILTROS.emps.has('todas') ? ['todas'] : [...PAG_FILTROS.emps].map(emp => empToLoja[emp]).filter(Boolean);
+    fLojas = new Set(lojasSel.length ? lojasSel : ['todas']);
+
+    const allDates = getAllDates();
+    const bounds = getDashboardDateBounds();
+    const de = dateToNum(bounds.de);
+    const ate = dateToNum(bounds.ate);
+    const activeDates = allDates.filter(d => {
+      const n = dateToNum(d);
+      return (!de || n >= de) && (!ate || n <= ate);
+    });
+    const data = filtered();
+    const piv = pivot(data, activeDates);
+
+    let confirmados = 0;
+    RAW.forEach(r => {
+      if(!isNomeEspecial(r.nome)) return;
+      if(!lojaMatch(r.loja)) return;
+      if(fTurno && r.turno !== fTurno) return;
+      const dn = dateToNum(r.data);
+      if(de && dn < de) return;
+      if(ate && dn > ate) return;
+      confirmados += r.entregas || 0;
+    });
+
+    let cancelados = 0, balcao = 0;
+    if(window._uploadStatsByDateLoja){
+      Object.entries(window._uploadStatsByDateLoja).forEach(([key, val]) => {
+        const [dataKey, lojaKey] = key.split('|');
+        if(!lojaMatch(lojaKey)) return;
+        const dn = dateToNum(dataKey);
+        if(de && dn < de) return;
+        if(ate && dn > ate) return;
+        cancelados += val.cancelados || 0;
+        balcao += val.balcao || 0;
+      });
+    }
+
+    const companyTotals = {burger:0, gourmet:0, forneria:0, sushi:0};
+    const companyMotoCounts = {burger:0, gourmet:0, forneria:0, sushi:0};
+    const companyPayTotals = {burger:0, gourmet:0, forneria:0, sushi:0};
+    Object.entries(empToLoja).forEach(([emp, loja]) => {
+      const empData = data.filter(r => r.loja === loja);
+      const empPiv = pivot(empData, activeDates);
+      companyTotals[emp] = empData.reduce((s, r) => s + (r.entregas || 0), 0);
+      companyMotoCounts[emp] = empPiv.filter(m => (m.total || 0) > 0).length;
+      companyPayTotals[emp] = empPiv.reduce((s, m) => {
+        const lojaBase = (m.loja || loja).split('+')[0] || loja;
+        return s + calcPagamento(m, lojaBase) + calcKmAdic(m, lojaBase) + calcMinimo10(m, lojaBase) + calcTxTrans(m, lojaBase) + (getPayConfig(lojaBase).chuva ? 10 : 0);
+      }, 0);
+    });
+
+    const totalEntregas = data.reduce((s, r) => s + (r.entregas || 0), 0);
+    const totalTaxaRecebida = data.reduce((s, r) => s + (r.taxa_recebida || 0), 0);
+    const totalGarantido = piv.reduce((s, m) => s + calcMinimo10(m, (m.loja || '').split('+')[0] || 'todas'), 0);
+    const totalAPagar = piv.reduce((s, m) => {
+      const lojaBase = (m.loja || '').split('+')[0] || 'todas';
+      return s + calcPagamento(m, lojaBase) + calcKmAdic(m, lojaBase) + calcMinimo10(m, lojaBase) + calcTxTrans(m, lojaBase) + (getPayConfig(lojaBase).chuva ? 10 : 0);
+    }, 0);
+
+    const perDay = {};
+    activeDates.forEach(dt => {
+      const rowsDia = data.filter(r => r.data === dt);
+      const pivDia = pivot(rowsDia, [dt]);
+      const totalPagarDia = pivDia.reduce((s, m) => {
+        const lojaBase = (m.loja || '').split('+')[0] || 'todas';
+        return s + calcPagamento(m, lojaBase) + calcKmAdic(m, lojaBase) + calcMinimo10(m, lojaBase) + calcTxTrans(m, lojaBase) + (getPayConfig(lojaBase).chuva ? 10 : 0);
+      }, 0);
+      perDay[dt] = {
+        entregas: rowsDia.reduce((s, r) => s + (r.entregas || 0), 0),
+        taxa: rowsDia.reduce((s, r) => s + (r.taxa_recebida || 0), 0),
+        pagar: totalPagarDia,
+        motoboys: pivDia.filter(m => (m.total || 0) > 0).length
+      };
+    });
+
+    return { activeDates, data, piv, confirmados, cancelados, balcao, companyTotals, companyMotoCounts, companyPayTotals, totalEntregas, totalTaxaRecebida, totalGarantido, totalAPagar, perDay };
+  } finally {
+    fDataDe = savedDe;
+    fDataAte = savedAte;
+    fTurno = savedTurno;
+    fNome = savedNome;
+    fLojas = savedLojas;
+  }
+}
+
 // Render
 function pagRender(){
   const main=document.getElementById('pag-main');
@@ -5473,13 +5571,15 @@ function pagRender(){
     diasSet.add(dt);
   })));
 
-  // Status chips
+  const dashCtx = pagGetDashboardAlignedContext();
+
+  // Status chips alinhados com o dashboard principal
   let html='<div class="pstatus-row">';
   ef.forEach(emp=>{
-    const n=Object.keys(PAG_DATA[emp]).length;
-    if(n>0){
-      const te=Object.values(PAG_DATA[emp]).reduce((s,m)=>s+Object.values(m.dias).reduce((ss,d)=>ss+d.qtd,0),0);
-      const tv=Object.values(PAG_DATA[emp]).reduce((s,m)=>s+Object.values(m.dias).reduce((ss,d)=>ss+d.totalValEnt,0),0);
+    const te = dashCtx.companyTotals[emp] || 0;
+    const n = dashCtx.companyMotoCounts[emp] || 0;
+    const tv = dashCtx.companyPayTotals[emp] || 0;
+    if(te>0 || n>0 || tv>0){
       html+=`<span class="chip">${PAG_EMP_LABEL[emp]}: ${n} motoboys · ${te} ent · <b>R$ ${tv.toFixed(2)}</b></span>`;
     }
   });
@@ -5557,31 +5657,21 @@ function pagRender(){
       return;
     }
 
-    // Totais gerais
-    let gtotalQtd=0,gtotalValEnt=0,gtotalEntrega=0,gtotalExtras=0,gtotalGarantido=0;
-    diasFiltrados.forEach(dt=>diasPivot[dt].forEach(g=>{
-      g.emps.forEach(ie=>{
-        gtotalQtd+=ie.d.qtd;
-        gtotalValEnt+=ie.d.totalValEnt;
-        gtotalEntrega+=ie.d.totalEntrega;
-        gtotalExtras+=ie.extra+ie.chuvaVal;
-        gtotalGarantido+=(ie.d.garantido||0);
-      });
-    }));
+    // Totais gerais alinhados com o dashboard principal
     html+=`<div class="psum-cards">
       <div class="pscard"><div class="sv">${diasFiltrados.length}</div><div class="sl">Dias</div></div>
-      <div class="pscard"><div class="sv">${gtotalQtd}</div><div class="sl">Entregas</div></div>
-      <div class="pscard gold"><div class="sv">R$ ${gtotalEntrega.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
-      ${gtotalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${gtotalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
-      <div class="pscard green"><div class="sv">R$ ${(gtotalValEnt+gtotalExtras).toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
+      <div class="pscard"><div class="sv">${dashCtx.totalEntregas}</div><div class="sl">Entregas</div></div>
+      <div class="pscard gold"><div class="sv">R$ ${dashCtx.totalTaxaRecebida.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
+      ${dashCtx.totalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${dashCtx.totalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
+      <div class="pscard green"><div class="sv">R$ ${dashCtx.totalAPagar.toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
     </div>`;
 
     diasFiltrados.forEach((dt,dIdx)=>{
       const dayLabel=pagFormatDiaLabel(dt);
       const dowAbrev=PAG_DIAS_PT[pagDiaSemana(dt)];
       const grupos=diasPivot[dt];
-      const diaQtd=grupos.reduce((s,g)=>s+g.totalQtd,0);
-      const diaVal=grupos.reduce((s,g)=>s+g.totalValEnt,0);
+      const diaQtd=(dashCtx.perDay[dt]&&dashCtx.perDay[dt].entregas)||grupos.reduce((s,g)=>s+g.totalQtd,0);
+      const diaVal=(dashCtx.perDay[dt]&&dashCtx.perDay[dt].pagar)||grupos.reduce((s,g)=>s+g.totalValEnt,0);
       html+=`<div class="pdia-bloco" id="pdia-${dIdx}">
         <div class="pdia-header" onclick="pagToggleDia(${dIdx})">
           <span class="pdia-toggle open" id="pdtog-${dIdx}">▼</span>
@@ -5644,31 +5734,21 @@ function pagRender(){
       return;
     }
 
-    // Totais gerais
-    let gtotalQtd=0,gtotalValEnt=0,gtotalEntrega=0,gtotalExtras=0,gtotalGarantido=0;
-    diasFiltrados.forEach(dt=>diasPivot[dt].forEach(g=>{
-      g.emps.forEach(ie=>{
-        gtotalQtd+=ie.d.qtd;
-        gtotalValEnt+=ie.d.totalValEnt;
-        gtotalEntrega+=ie.d.totalEntrega;
-        gtotalExtras+=ie.extra+ie.chuvaVal;
-        gtotalGarantido+=(ie.d.garantido||0);
-      });
-    }));
+    // Totais gerais alinhados com o dashboard principal
     html+=`<div class="psum-cards">
       <div class="pscard"><div class="sv">${diasFiltrados.length}</div><div class="sl">Dias</div></div>
-      <div class="pscard"><div class="sv">${gtotalQtd}</div><div class="sl">Entregas</div></div>
-      <div class="pscard gold"><div class="sv">R$ ${gtotalEntrega.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
-      ${gtotalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${gtotalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
-      <div class="pscard green"><div class="sv">R$ ${(gtotalValEnt+gtotalExtras).toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
+      <div class="pscard"><div class="sv">${dashCtx.totalEntregas}</div><div class="sl">Entregas</div></div>
+      <div class="pscard gold"><div class="sv">R$ ${dashCtx.totalTaxaRecebida.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
+      ${dashCtx.totalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${dashCtx.totalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
+      <div class="pscard green"><div class="sv">R$ ${dashCtx.totalAPagar.toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
     </div>`;
 
     diasFiltrados.forEach((dt,dIdx)=>{
       const dowAbrev=PAG_DIAS_PT[pagDiaSemana(dt)];
       const dayLabel=pagFormatDiaLabel(dt);
       const grupos=diasPivot[dt];
-      const diaQtd=grupos.reduce((s,g)=>s+g.totalQtd,0);
-      const diaVal=grupos.reduce((s,g)=>s+g.totalValEnt,0);
+      const diaQtd=(dashCtx.perDay[dt]&&dashCtx.perDay[dt].entregas)||grupos.reduce((s,g)=>s+g.totalQtd,0);
+      const diaVal=(dashCtx.perDay[dt]&&dashCtx.perDay[dt].pagar)||grupos.reduce((s,g)=>s+g.totalValEnt,0);
       html+=`<div class="pdia-bloco" id="pdia-${dIdx}">
         <div class="pdia-header" onclick="pagToggleDia(${dIdx})">
           <span class="pdia-toggle open" id="pdtog-${dIdx}">▼</span>
@@ -6970,5 +7050,197 @@ function pagAbrirCadastroPix(){
 })();
 </script>
 
+<script>
+(function(){
+  function pagEmpToLojaLabel(emp){
+    for(const [loja,key] of Object.entries(PAG_EMP_LOJA||{})) if(key===emp) return loja;
+    return '';
+  }
+  function pagSelectedEmps(){
+    return (PAG_FILTROS && PAG_FILTROS.emps && !PAG_FILTROS.emps.has('todas')) ? [...PAG_FILTROS.emps] : (Array.isArray(PAG_EMPS) ? PAG_EMPS.slice() : []);
+  }
+  function pagWithDashboardScope(run){
+    const saved={
+      de:fDataDe, ate:fDataAte, turno:fTurno, nome:fNome,
+      lojas:(typeof fLojas!=='undefined' && fLojas instanceof Set) ? new Set(fLojas) : new Set(['todas'])
+    };
+    try{
+      const emps=pagSelectedEmps();
+      const lojas=emps.map(pagEmpToLojaLabel).filter(Boolean);
+      fDataDe=PAG_FILTROS.de||'';
+      fDataAte=PAG_FILTROS.ate||'';
+      fTurno=(PAG_FILTROS.turno&&PAG_FILTROS.turno!=='todos')?PAG_FILTROS.turno:'';
+      fNome=String(PAG_FILTROS.nome||'').trim();
+      fLojas=(lojas.length && lojas.length < PAG_EMPS.length) ? new Set(lojas) : new Set(['todas']);
+      return run({emps,lojas});
+    }finally{
+      fDataDe=saved.de; fDataAte=saved.ate; fTurno=saved.turno; fNome=saved.nome; fLojas=saved.lojas;
+    }
+  }
+  function pagCalcPivotTotalAPagar(piv){
+    return (piv||[]).reduce((s,m)=>{
+      const lojaMain=(m.loja||'').split('+')[0]||'Just Burger';
+      return s
+        + (calcPagamento(m,lojaMain)||0)
+        + (calcKmAdic(m)||0)
+        + (calcMinimo10(m,lojaMain)||0)
+        + (calcTxTrans(m,lojaMain)||0)
+        + ((getPayConfig(lojaMain).chuva)?10:0);
+    },0);
+  }
+  function pagCollectEntriesForDay(dt, ef, filtroNome){
+    const out=[];
+    ef.forEach(emp=>Object.values(PAG_DATA[emp]||{}).forEach(m=>{
+      if(!m || !m.dias || !m.dias[dt]) return;
+      const d=m.dias[dt];
+      if(PAG_FILTROS.turno!=='todos'){
+        const turnos=(d.turnos?[...d.turnos]:[d.turno||'Noite']);
+        if(!turnos.includes(PAG_FILTROS.turno)) return;
+      }
+      const nn=pagNomeNorm(m.nome);
+      if(filtroNome && !nn.includes(filtroNome)) return;
+      out.push({emp,m,d,nn,num:pagNumCadastro(m.nome)});
+    }));
+    return out;
+  }
+  function pagFallbackGroupMeta(g){
+    return {
+      nome:g.nome,
+      totalQtd:g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0),
+      valorEntrega:g.emps.reduce((s,ie)=>s+(ie.d.totalValEnt||0),0),
+      kmAdic:0,
+      garantido:0,
+      txTrans:0,
+      chuvaCfg:0,
+      totalAligned:g.emps.reduce((s,ie)=>s+(ie.d.totalValEnt||0),0)
+    };
+  }
+  function pagBuildGroupsForDay(dt, ef, filtroNome){
+    const entradas=pagCollectEntriesForDay(dt, ef, filtroNome);
+    if(!entradas.length) return [];
+    const modoMulti=(ef||[]).length>1;
+    const dashMap=pagBuildDashboardAlignedDayMap(dt)||{};
+    let grupos=[];
+    if(modoMulti){
+      const nomesSemCadastro=[...new Set(entradas.filter(x=>!x.num).map(x=>x.nn))];
+      const mapaFuzzy=nomesSemCadastro.length && typeof construirGruposNomes==='function'
+        ? construirGruposNomes(nomesSemCadastro)
+        : Object.fromEntries(nomesSemCadastro.map(nn=>[nn,nn]));
+      const grupoMap={};
+      entradas.forEach(({emp,m,d,nn,num})=>{
+        const repNome=num ? nn : (mapaFuzzy[nn]||nn);
+        const gKey=num ? `NUM:${num}` : `NOME:${repNome}`;
+        if(!grupoMap[gKey]) grupoMap[gKey]={nome:m.nome,gKey,emps:[],turnos:new Set(),totalQtd:0,totalValEnt:0};
+        if(m.nome.length>grupoMap[gKey].nome.length) grupoMap[gKey].nome=m.nome;
+        const eKey=nn+'|'+dt+'|'+emp;
+        const extra=parseFloat(pagExtrasMap[eKey]||0)||0;
+        const chuvaVal=parseFloat(pagExtrasMap[eKey+'|chuva']||0)||0;
+        grupoMap[gKey].emps.push({emp,d,eKey,extra,chuvaVal,nn});
+        (d.turnos?[...d.turnos]:[d.turno||'Noite']).forEach(t=>grupoMap[gKey].turnos.add(t));
+      });
+      grupos=Object.values(grupoMap);
+    }else{
+      const grupoMap={};
+      entradas.forEach(({emp,m,d,nn})=>{
+        const gKey=pagGrupoKey(m.nome);
+        if(!grupoMap[gKey]) grupoMap[gKey]={nome:m.nome,gKey,emps:[],turnos:new Set(),totalQtd:0,totalValEnt:0};
+        if(m.nome.length>grupoMap[gKey].nome.length) grupoMap[gKey].nome=m.nome;
+        const eKey=nn+'|'+dt+'|'+emp;
+        const extra=parseFloat(pagExtrasMap[eKey]||0)||0;
+        const chuvaVal=parseFloat(pagExtrasMap[eKey+'|chuva']||0)||0;
+        grupoMap[gKey].emps.push({emp,d,eKey,extra,chuvaVal,nn});
+        (d.turnos?[...d.turnos]:[d.turno||'Noite']).forEach(t=>grupoMap[gKey].turnos.add(t));
+      });
+      grupos=Object.values(grupoMap);
+    }
+    grupos.forEach(g=>{
+      const manual=g.emps.reduce((s,ie)=>s+(ie.extra||0)+(ie.chuvaVal||0),0);
+      const aligned=dashMap[g.gKey] || null;
+      const meta=aligned || pagFallbackGroupMeta(g);
+      g.emps._groupMeta=meta;
+      g.totalQtd=meta.totalQtd || g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0);
+      g.totalValEnt=(meta.totalAligned || meta.valorEntrega || 0) + manual;
+    });
+    return grupos.sort((a,b)=>(b.totalValEnt-a.totalValEnt)||a.nome.localeCompare(b.nome,'pt-BR'));
+  }
+  pagRender=function(){
+    const main=document.getElementById('pag-main');
+    if(!main) return;
+    _pagChuvaEKeys=[];
+    const ef=pagSelectedEmps();
+    const filtroNome=PAG_FILTROS.nome?pagNomeNorm(PAG_FILTROS.nome):'';
+    const temDados=ef.some(emp=>Object.keys(PAG_DATA[emp]||{}).length>0);
+    if(!temDados){
+      main.innerHTML='<div class="pempty"><div class="pei">🏍️</div><p>Nenhum dado carregado no dashboard. Aguarde a leitura da base sincronizada no Firebase.</p></div>';
+      return;
+    }
+    pagWithDashboardScope(({emps,lojas})=>{
+      const allDates=getAllDates();
+      const de=dateToNum(fDataDe), ate=dateToNum(fDataAte);
+      const activeDates=allDates.filter(d=>{ const n=dateToNum(d); return (!de||n>=de) && (!ate||n<=ate); });
+      const data=filtered();
+      const piv=pivot(data, activeDates);
+      if(!data.length){
+        main.innerHTML='<div class="pempty"><div class="pei">🔍</div><p>Nenhum dado para os filtros selecionados.</p></div>';
+        return;
+      }
+      const chips=emps.map(emp=>{
+        const loja=pagEmpToLojaLabel(emp);
+        const dataEmp=data.filter(r=>r.loja===loja);
+        if(!dataEmp.length) return '';
+        const pivEmp=pivot(dataEmp, activeDates);
+        const totalEnt=dataEmp.reduce((s,r)=>s+(r.entregas||0),0);
+        const totalPagar=pagCalcPivotTotalAPagar(pivEmp);
+        return `<span class="chip">${PAG_EMP_LABEL[emp]}: ${pivEmp.length} motoboys · ${totalEnt} ent · <b>R$ ${totalPagar.toFixed(2)}</b></span>`;
+      }).filter(Boolean).join('');
+      let html='<div class="pstatus-row">'+chips+'</div>';
+      const diasPivot={};
+      activeDates.forEach(dt=>{
+        const grupos=pagBuildGroupsForDay(dt, emps, filtroNome);
+        if(grupos.length) diasPivot[dt]=grupos;
+      });
+      const diasFiltrados=Object.keys(diasPivot).sort((a,b)=>pagDateNum(a)-pagDateNum(b));
+      if(!diasFiltrados.length){
+        main.innerHTML=html+'<div class="pempty"><div class="pei">🔍</div><p>Nenhum dado para os filtros selecionados.</p></div>';
+        return;
+      }
+      const totalEnt=data.reduce((s,r)=>s+(r.entregas||0),0);
+      const totalTaxa=data.reduce((s,r)=>s+(r.taxa_recebida||0),0);
+      const totalGarantido=piv.reduce((s,m)=>s+(calcMinimo10(m,(m.loja||'').split('+')[0]||'Just Burger')||0),0);
+      const manualTotal=diasFiltrados.reduce((s,dt)=>s+diasPivot[dt].reduce((ss,g)=>ss+g.emps.reduce((sx,ie)=>sx+(ie.extra||0)+(ie.chuvaVal||0),0),0),0);
+      const totalPagar=pagCalcPivotTotalAPagar(piv)+manualTotal;
+      html+=`<div class="psum-cards">
+        <div class="pscard"><div class="sv">${diasFiltrados.length}</div><div class="sl">Dias</div></div>
+        <div class="pscard"><div class="sv">${totalEnt}</div><div class="sl">Entregas</div></div>
+        <div class="pscard gold"><div class="sv">R$ ${totalTaxa.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
+        ${totalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${totalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
+        <div class="pscard green"><div class="sv">R$ ${totalPagar.toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
+      </div>`;
+      diasFiltrados.forEach((dt,dIdx)=>{
+        const grupos=diasPivot[dt];
+        const diaQtd=grupos.reduce((s,g)=>s+(g.totalQtd||0),0);
+        const diaVal=grupos.reduce((s,g)=>s+(g.totalValEnt||0),0);
+        const dowAbrev=PAG_DIAS_PT[pagDiaSemana(dt)];
+        const dayLabel=pagFormatDiaLabel(dt);
+        html+=`<div class="pdia-bloco" id="pdia-${dIdx}">
+          <div class="pdia-header" onclick="pagToggleDia(${dIdx})">
+            <span class="pdia-toggle open" id="pdtog-${dIdx}">▼</span>
+            <span class="pdia-dow">${dowAbrev}</span>
+            <span class="pdia-date">${dayLabel}</span>
+            <span class="pdia-total-ent">${diaQtd} entregas</span>
+            <span class="pdia-total-val" id="pdiaval-${dIdx}">R$ ${diaVal.toFixed(2)}</span>
+          </div>
+          <div class="pdia-body open" id="pdbody-${dIdx}">`;
+        grupos.forEach((g,mIdx)=>{
+          const dRep=g.emps[0].d;
+          html+=pagMotoHtml(dIdx,0,mIdx,dt,g.nome,dRep,g.emps[0].emp,g.emps);
+        });
+        html+='</div></div>';
+      });
+      main.innerHTML=html;
+    });
+  };
+})();
+</script>
 </body>
 </html>
