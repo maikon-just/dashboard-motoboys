@@ -2101,15 +2101,24 @@ function processUploadFiles(files){
           // ── 2. Entregador
           let entregador = '';
           const rawEnt = row['Entregador'];
+          const rawEntText = rawEnt === null || rawEnt === undefined ? '' : String(rawEnt).trim();
           if(rawEnt !== null && rawEnt !== undefined){
             const s = String(rawEnt).trim();
             if(s && s.toUpperCase() !== 'N/A' && !/^\d{8,}$/.test(s)) entregador = s;
           }
-          // Sem entregador → balcão/telefone/funcionário (independente do campo Entregue)
+          const entregueMarcado = ['Entregue','Entrega realizada','Entrega realizada?']
+            .some(col => {
+              const flag = String(row[col] ?? '').trim().toUpperCase();
+              return flag === 'S' || flag === 'SIM' || flag === 'Y' || flag === 'YES' || flag === 'TRUE' || flag === '1';
+            });
+          // Entregador em branco + Entregue=S → mantém a linha em branco.
+          // Sem entregador nos demais casos → balcão/telefone/funcionário.
           if(!entregador){
-            statsByDL[dlKey].balcao++;
-            gBalcao++;
-            return;
+            if(!(rawEntText === '' && entregueMarcado)){
+              statsByDL[dlKey].balcao++;
+              gBalcao++;
+              return;
+            }
           }
 
           // ── 3. Data (já resolvida, verifica se válida)
@@ -4869,6 +4878,17 @@ function pagSyncFromRAW(){
   PAG_EMPS.forEach(emp=>{ PAG_DATA[emp]={}; });
   if(!RAW||RAW.length===0) return;
 
+  // Usa a mesma lógica de agrupamento fuzzy da tela de eficiência
+  // dentro de cada empresa antes de montar a base de pagamentos.
+  const pagMapasPorEmp = {};
+  PAG_EMPS.forEach(emp=>{
+    const nomesEmp = RAW
+      .filter(r => PAG_EMP_LOJA[r.loja]===emp)
+      .map(r => (r && r.nome ? String(r.nome).toUpperCase() : ''))
+      .filter(nome => nome && nome !== '(SEM ENTREGADOR)' && !isNomeEspecial(nome));
+    pagMapasPorEmp[emp] = pagBuildNameGroupMap(nomesEmp);
+  });
+
   // ══════════════════════════════════════════════════════════════════════
   // PASSO 1: acumula por empresa / motoboy(gKey) / dia
   // ──────────────────────────────────────────────────────────────────────
@@ -4886,7 +4906,7 @@ function pagSyncFromRAW(){
     if(isNomeEspecial(nomeRaw)) return;
 
     // Chave de fusão dentro da empresa (número de cadastro tem prioridade)
-    const gk=pagGrupoKey(nomeRaw);
+    const gk=pagGrupoKey(nomeRaw, pagMapasPorEmp[emp]);
 
     if(!PAG_DATA[emp][gk]){
       PAG_DATA[emp][gk]={
@@ -4924,7 +4944,7 @@ function pagSyncFromRAW(){
       const nomeRaw=c.nome?c.nome.toUpperCase():null;
       if(!nomeRaw||nomeRaw==='(SEM ENTREGADOR)') return;
       if(isNomeEspecial(nomeRaw)) return;
-      const gk=pagGrupoKey(nomeRaw);
+      const gk=pagGrupoKey(nomeRaw, pagMapasPorEmp[emp]);
       if(!PAG_DATA[emp][gk]) return;
       const d=PAG_DATA[emp][gk].dias[c.data];
       if(!d) return;
@@ -5319,6 +5339,14 @@ function pagRender(){
   // Filtro de nome
   const filtroNome=PAG_FILTROS.nome?pagNomeNorm(PAG_FILTROS.nome):'';
 
+  // Mesmo critério da tela de eficiência para fundir nomes parecidos
+  // quando múltiplas empresas estão selecionadas.
+  const pagMapaNomesVisiveis = (()=>{
+    const nomes=[];
+    ef.forEach(emp=>Object.values(PAG_DATA[emp]).forEach(m=>{ if(m && m.nome) nomes.push(m.nome); }));
+    return pagBuildNameGroupMap(nomes);
+  })();
+
   const temDados=ef.some(emp=>Object.keys(PAG_DATA[emp]).length>0);
   if(!temDados){
     main.innerHTML='<div class="pempty"><div class="pei">🏍️</div><p>Nenhum dado carregado no dashboard. Aguarde a leitura da base sincronizada no Firebase.</p></div>';
@@ -5370,9 +5398,8 @@ function pagRender(){
           }
           const nn=pagNomeNorm(m.nome);
           if(filtroNome&&!nn.includes(filtroNome)) return;
-          // Chave de agrupamento: número de cadastro ou nome normalizado
-          const num=pagNumCadastro(m.nome);
-          const gKey=num||nn;
+          // Chave de agrupamento: mesmo agrupamento fuzzy da eficiência
+          const gKey=pagGrupoKey(m.nome, pagMapaNomesVisiveis);
           if(!grupoMap[gKey]){
             grupoMap[gKey]={nome:m.nome,gKey,emps:[],totalValEnt:0,totalQtd:0,turnos:new Set()};
           }
@@ -5460,7 +5487,7 @@ function pagRender(){
           const nn=pagNomeNorm(m.nome);
           if(filtroNome&&!nn.includes(filtroNome)) return;
           // Agrupa pelo número de cadastro (evita duplicatas com nomes levemente diferentes)
-          const gKey=pagGrupoKey(m.nome);
+          const gKey=pagGrupoKey(m.nome, pagMapaNomesVisiveis);
           if(!grupoMap[gKey]){
             grupoMap[gKey]={nome:m.nome,gKey,emps:[],totalValEnt:0,totalQtd:0,turnos:new Set()};
           }
@@ -5658,10 +5685,20 @@ function pagSetPix(nn,val){
   try{localStorage.setItem('mpag_pix_v2',JSON.stringify(pagPixMap));}catch(e){}
 }
 
-// ── Helper: chave de agrupamento para resumo (usa nº cadastro se disponível)
-function pagGrupoKey(nome){
+function pagBuildNameGroupMap(nomes){
+  const lista=[...new Set((nomes||[]).map(pagNomeNorm).filter(Boolean))];
+  return lista.length ? construirGruposNomes(lista) : {};
+}
+
+// ── Helper: chave de agrupamento para pagamentos
+// Prioriza nº de cadastro. Quando não houver, aplica a mesma fusão fuzzy
+// usada pela tela de eficiência (nomesIguais + construirGruposNomes).
+function pagGrupoKey(nome, mapaNomes){
   const num=pagNumCadastro(nome);
-  return num||pagNomeNorm(nome);
+  if(num) return 'ID:'+num;
+  const nn=pagNomeNorm(nome);
+  const rep=(mapaNomes && mapaNomes[nn]) ? mapaNomes[nn] : nn;
+  return 'NM:'+rep;
 }
 
 // Resumo financeiro
@@ -6157,22 +6194,95 @@ function pagAbrirCadastroPix(){
 (function(){
   const FIREBASE_URL = 'https://justburger-producao-e9b27-default-rtdb.firebaseio.com';
   const REPORTS_URL = FIREBASE_URL + '/relatorios_diarios.json';
+  const CACHE_META_KEY = 'motoboys_cache_meta_v2';
 
-  function motoFetchJson(url){ return fetch(url, {cache:'no-store'}).then(r => { if(!r.ok) throw new Error('Falha ao ler '+url); return r.json(); }); }
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function monthKeyFromBr(ddmmyyyy){
+    if(!ddmmyyyy) return '';
+    const [d,m,y] = String(ddmmyyyy).split('/');
+    if(!d || !m || !y) return '';
+    return `${y}-${m}`;
+  }
+  function sameMonthBr(a,b){ return monthKeyFromBr(a) && monthKeyFromBr(a) === monthKeyFromBr(b); }
+  function setCalToLatestData(){
+    const all = getAllDates();
+    if(!all.length) return;
+    const latest = parseDate(all[all.length - 1]);
+    calYear = latest.y;
+    calMonth = latest.m;
+  }
+  function applyLatestMonthRangeFromData(force=false){
+    const all = getAllDates();
+    if(!all.length) return;
+    const latest = all[all.length - 1];
+    const latestMonth = monthKeyFromBr(latest);
+    const sameMonth = all.filter(d => monthKeyFromBr(d) === latestMonth);
+    const first = sameMonth[0] || latest;
+    const last = sameMonth[sameMonth.length - 1] || latest;
+    if(force || (!fDataDe && !fDataAte)){
+      fDataDe = first;
+      fDataAte = last;
+      const inputDe = document.getElementById('inputDe');
+      const inputAte = document.getElementById('inputAte');
+      if(inputDe) inputDe.value = fDataDe || '';
+      if(inputAte) inputAte.value = fDataAte || '';
+    }
+    const calLabel = document.getElementById('calLabel');
+    if(calLabel){
+      if(fDataDe && fDataAte && fDataDe !== fDataAte) calLabel.textContent = '📅 ' + fDataDe.slice(0,5) + ' → ' + fDataAte.slice(0,5);
+      else if(fDataDe) calLabel.textContent = '📅 ' + fDataDe;
+      else calLabel.textContent = '📅 Selecione o período';
+    }
+    syncDateInputsFromState();
+    setCalToLatestData();
+  }
+  reinitCal = function(){ setCalToLatestData(); };
+
+  function motoToast(msg, dur=3500){
+    try{ if(typeof showToast === 'function'){ showToast(msg, dur); return; } }catch(e){}
+    const t = document.getElementById('toast');
+    if(!t) return;
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(window.__motoToastTimer);
+    window.__motoToastTimer = setTimeout(() => t.classList.remove('show'), dur);
+  }
+  function motoFetchJson(url){
+    return fetch(url, {cache:'no-store'}).then(r => {
+      if(!r.ok) throw new Error('Falha ao ler ' + url);
+      return r.json();
+    });
+  }
+  function rowLooksLikeMotoboys(row){
+    if(!row || typeof row !== 'object') return false;
+    return ('Entregador' in row) || ('Entrega' in row) || ('Valor Entregador' in row) || ('Nome da loja' in row) || ('Código da loja' in row) || ('Codigo da loja' in row);
+  }
+  function isYesLike(value){
+    const s = String(value == null ? '' : value).trim().toUpperCase();
+    return s === 'S' || s === 'SIM' || s === 'Y' || s === 'YES' || s === 'TRUE' || s === '1';
+  }
+  function parseEmbeddedRows(rep){
+    const candidates = [rep?.preview_json, rep?.dados_json];
+    for(const raw of candidates){
+      if(!raw) continue;
+      try{
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if(Array.isArray(parsed?.linhas)) return parsed.linhas.slice();
+        if(Array.isArray(parsed?.rows)) return parsed.rows.slice();
+      }catch(e){}
+    }
+    return [];
+  }
   async function motoFetchReportRows(rep){
-    let parsed = {};
-    try{ parsed = JSON.parse(rep.dados_json || '{}'); }catch(e){ parsed = {}; }
-    let rows = Array.isArray(parsed.linhas) ? parsed.linhas.slice() : [];
-    let totalOriginal = Number(parsed.total_original || rows.length || rep.total_linhas || 0);
-    let chunkCount = 0;
-    if(rep.chunked && rep.chunks_path){
+    let rows = parseEmbeddedRows(rep);
+    let totalOriginal = Number(rep?.total_linhas || rows.length || 0);
+    if(rep && rep.chunked && rep.chunks_path){
       const chunksObj = await motoFetchJson(`${FIREBASE_URL}/${rep.chunks_path}.json`);
       const chunkList = Object.values(chunksObj || {}).sort((a,b)=>(a.chunk_index||0)-(b.chunk_index||0));
-      chunkCount = chunkList.length;
-      rows = chunkList.flatMap(c => Array.isArray(c.rows) ? c.rows : []);
+      rows = chunkList.flatMap(chunk => Array.isArray(chunk?.rows) ? chunk.rows : []);
       if(!totalOriginal) totalOriginal = rows.length;
     }
-    return {rows, totalOriginal, chunkCount};
+    return { rows, totalOriginal };
   }
   function ensureQuickPaymentButtons(){
     const bar = document.getElementById('pag-action-bar');
@@ -6186,63 +6296,22 @@ function pagAbrirCadastroPix(){
     bar.appendChild(mk('pag-quick-hoje','📅 Diário', pagPresetHoje, 'rgba(14,165,233,.15)', '#38bdf8', '#7dd3fc'));
     bar.appendChild(mk('pag-quick-semana','🗓️ Semanal', pagPresetSemana, 'rgba(16,185,129,.15)', '#34d399', '#86efac'));
   }
-  let __motoToastTimer = null;
-  function motoToast(msg, dur=3500){
-    try{
-      if(typeof showToast === 'function'){
-        showToast(msg, dur);
-        return;
-      }
-    }catch(e){}
-    const t = document.getElementById('toast');
-    if(!t) return;
-    t.textContent = msg;
-    t.classList.add('show');
-    clearTimeout(__motoToastTimer);
-    __motoToastTimer = setTimeout(() => t.classList.remove('show'), dur);
-  }
-  function rowLooksLikeMotoboys(row){
-    if(!row || typeof row !== 'object') return false;
-    return ('Entregador' in row) || ('Entrega' in row) || ('Valor Entregador' in row) || ('Nome da loja' in row) || ('Código da loja' in row) || ('Codigo da loja' in row);
-  }
-  window.pagPresetHoje = function(){
-    const all = getAllDates();
-    if(!all.length) return;
-    const last = all[all.length-1];
-    PAG_FILTROS.de = last; PAG_FILTROS.ate = last; pagUpdateCalLabel(); pagRender();
-  };
-  window.pagPresetSemana = function(){
-    const all = getAllDates();
-    if(!all.length) return;
-    const last = all[all.length-1];
-    const end = dateToNum(last);
-    const recent = all.filter(dt => {
-      const diff = end - dateToNum(dt);
-      return diff >= 0 && diff <= 6;
-    });
-    PAG_FILTROS.de = recent[0] || last;
-    PAG_FILTROS.ate = last;
-    pagUpdateCalLabel();
-    pagRender();
-  };
   function ingestMotoRows(rows, map, detail, stats, counters, seenPedidos, repId){
     rows.forEach((row, idx) => {
       if(!rowLooksLikeMotoboys(row)) return;
       const pedidoBase = row['Id do pedido no parceiro'] || row['Número do pedido no parceiro'] || row['Pedido'] || `${repId||'rep'}_${idx}`;
-      const dataPedido = normalizaData(row['Data da venda']||row['Data']);
-      const codigoPedido = row['Código da loja']||row['Codigo da loja']||row['Cód. loja']||'';
-      const lojaPedido = normalizaEmpresa(row['Nome da loja']||'', codigoPedido);
-      const pedidoKey = `${pedidoBase}|${dataPedido||'sem_data'}|${lojaPedido}`;
-      if(seenPedidos && seenPedidos.has(pedidoKey)) return;
-      if(seenPedidos) seenPedidos.add(pedidoKey);
-      const dataFmtPre  = normalizaData(row['Data da venda']||row['Data']);
+      const dataFmtPre = normalizaData(row['Data da venda']||row['Data']);
       const codigoLojaPre = row['Código da loja']||row['Codigo da loja']||row['Cód. loja']||null;
-      const lojaNomePre   = normalizaEmpresa(row['Nome da loja']||'', codigoLojaPre);
+      const lojaNomePre = normalizaEmpresa(row['Nome da loja']||'', codigoLojaPre);
+      const pedidoKey = `${pedidoBase}|${dataFmtPre||'sem_data'}|${lojaNomePre}`;
+      if(seenPedidos.has(pedidoKey)) return;
+      seenPedidos.add(pedidoKey);
+
       const dlKey = (dataFmtPre && lojaNomePre !== 'Desconhecida') ? `${dataFmtPre}|${lojaNomePre}` : '__sem_data__';
       if(!stats[dlKey]) stats[dlKey] = { cancelados:0, balcao:0, data:dataFmtPre, loja:lojaNomePre };
 
-      const cancelado = String(row['Está cancelado']||row['Esta cancelado']||'N').toUpperCase().trim();
-      if(cancelado === 'S' || cancelado === 'SIM'){
+      const cancelado = String(row['Está cancelado']||row['Esta cancelado']||row['cancelado']||'N').trim().toUpperCase();
+      if(cancelado === 'S' || cancelado === 'SIM' || cancelado === '1'){
         stats[dlKey].cancelados++;
         counters.cancelados++;
         return;
@@ -6250,22 +6319,26 @@ function pagAbrirCadastroPix(){
 
       let entregador = '';
       const rawEnt = row['Entregador'];
+      const rawEntText = rawEnt === null || rawEnt === undefined ? '' : String(rawEnt).trim();
       if(rawEnt !== null && rawEnt !== undefined){
         const s = String(rawEnt).trim();
         if(s && s.toUpperCase() !== 'N/A' && !/^\d{8,}$/.test(s)) entregador = s;
       }
+      const entregueMarcado = ['Entregue','Entrega realizada','Entrega realizada?'].some(col => isYesLike(row[col]));
       if(!entregador){
-        stats[dlKey].balcao++;
-        counters.balcao++;
-        return;
+        if(!(rawEntText === '' && entregueMarcado)){
+          stats[dlKey].balcao++;
+          counters.balcao++;
+          return;
+        }
       }
 
       if(!dataFmtPre){ counters.semDado++; return; }
       if(lojaNomePre === 'Desconhecida'){ counters.semDado++; return; }
 
-      const turno   = normalizaTurno(row['Turno']);
+      const turno = normalizaTurno(row['Turno']);
       const entregaVal = parseFloat(row['Entrega']||0)||0;
-      const nomeUp = entregador.toUpperCase();
+      const nomeUp = String(entregador || '').toUpperCase();
       const key = `${nomeUp}|${dataFmtPre}|${turno}|${lojaNomePre}`;
       if(!map[key]) map[key] = {
         nome: nomeUp,
@@ -6285,8 +6358,12 @@ function pagAbrirCadastroPix(){
       else if(tRnd === 12) map[key].km_adic_12 += 1;
       else if(tRnd === 13) map[key].km_adic_13 += 1;
       else if(tRnd === 22) map[key].km_adic_22 += 1;
+
       detail.push({
-        nome: nomeUp, loja: lojaNomePre, turno, data: dataFmtPre,
+        nome: nomeUp,
+        loja: lojaNomePre,
+        turno,
+        data: dataFmtPre,
         consumidor: String(row['Consumidor']||row['consumidor']||'').trim(),
         bairro: String(row['Bairro']||row['bairro']||'').trim(),
         endereco: String(row['Endereço']||row['Endereco']||row['Endereço de entrega']||row['endereco']||'').trim(),
@@ -6296,83 +6373,151 @@ function pagAbrirCadastroPix(){
       });
     });
   }
-  async function loadFromFirebaseMotoboys(){
+  function setAllCompanyButtonActive(){
+    const allBtn = document.querySelector('.btn-filter[data-filter="loja"][data-val="todas"]');
+    if(!allBtn) return;
+    if(!document.querySelector('.btn-filter[data-filter="loja"].active')){
+      allBtn.classList.add('active');
+      fLojas = new Set(['todas']);
+      fLoja = 'todas';
+      const cfgEmpresa = document.getElementById('cfgEmpresa');
+      if(cfgEmpresa) cfgEmpresa.value = 'todas';
+    }
+  }
+  async function loadMotoboysLegacyData(opts={}){
+    const { silent=false, force=false } = opts || {};
+    if(window.__motoLoading) return;
     const statusEl = document.getElementById('uploadStatus');
     const subEl = document.getElementById('headerSub');
-    if(statusEl) statusEl.textContent = '⏳ Lendo base do Firebase...';
-    if(subEl) subEl.textContent = 'Conectando na base consolidada';
-    RAW = []; RAW_DETAIL = []; window._uploadStatsByDateLoja = {};
+    if(statusEl) statusEl.textContent = '⏳ Carregando base de motoboys...';
+    if(subEl) subEl.textContent = 'Lendo relatórios de motoboys no Firebase';
+    window.__motoLoading = true;
     try{
-      const obj = await motoFetchJson(REPORTS_URL) || {};
-      const reports = Object.entries(obj).map(([id,v]) => ({id,...v}))
-        .filter(r => r && r.status !== 'deletado')
-        .sort((a,b)=>(a.timestamp_upload||0)-(b.timestamp_upload||0));
+      const reportsObj = await motoFetchJson(REPORTS_URL) || {};
+      const reports = Object.entries(reportsObj).map(([id, value]) => ({ id, ...(value||{}) }))
+        .filter(rep => rep && rep.status !== 'deletado' && rep.status !== 'substituido')
+        .sort((a,b)=>(Number(a.timestamp_upload||a.created_at||0))-(Number(b.timestamp_upload||b.created_at||0)));
+
       const map = {};
       const detail = [];
       const stats = {};
-      const counters = {cancelados:0, balcao:0, semDado:0};
+      const counters = { cancelados:0, balcao:0, semDado:0 };
       const seenPedidos = new Set();
-      let totalLinhas = 0, chunked = 0, truncados = 0, falhas = 0;
-      for(const rep of reports){
-        try{
-          const {rows, totalOriginal} = await motoFetchReportRows(rep);
-          totalLinhas += totalOriginal || rows.length;
-          if(rep.chunked) chunked++;
-          if(!rep.chunked && (totalOriginal || 0) > rows.length) truncados++;
-          ingestMotoRows(rows, map, detail, stats, counters, seenPedidos, rep.id);
-        }catch(repErr){
-          falhas++;
-          console.error('Falha ao processar relatório de motoboys', rep?.nome_arquivo, repErr);
-        }
+      let totalLinhas = 0;
+      let validReports = 0;
+
+      for(let i=0;i<reports.length;i++){
+        const rep = reports[i];
+        if(statusEl) statusEl.textContent = `⏳ Carregando base de motoboys... ${i+1}/${reports.length}`;
+        const { rows, totalOriginal } = await motoFetchReportRows(rep);
+        totalLinhas += totalOriginal || rows.length;
+        if(rows.some(rowLooksLikeMotoboys)) validReports++;
+        ingestMotoRows(rows, map, detail, stats, counters, seenPedidos, rep.id);
       }
+
       RAW = Object.values(map).sort((a,b) => dateToNum(a.data) - dateToNum(b.data));
       RAW_DETAIL = detail;
-      Object.entries(stats).forEach(([k,v]) => { if(k !== '__sem_data__') window._uploadStatsByDateLoja[k] = {cancelados:v.cancelados||0, balcao:v.balcao||0}; });
+      window._uploadStatsByDateLoja = {};
+      Object.entries(stats).forEach(([k,v]) => {
+        if(k !== '__sem_data__') window._uploadStatsByDateLoja[k] = { cancelados:v.cancelados||0, balcao:v.balcao||0 };
+      });
       try{ localStorage.setItem('motoboys_raw_v2', JSON.stringify(RAW)); }catch(e){}
       try{ localStorage.setItem('motoboys_raw_detail_v1', JSON.stringify(RAW_DETAIL)); }catch(e){}
       try{ localStorage.setItem('motoboys_stats_dl_v1', JSON.stringify(window._uploadStatsByDateLoja)); }catch(e){}
-      const totalEnt = RAW.reduce((s,r)=>s+r.entregas,0);
-      if(statusEl) statusEl.textContent = `${RAW.length.toLocaleString()} grupos · ${totalEnt.toLocaleString()} entregas · ${reports.length} upload(s)`;
-      if(subEl) subEl.textContent = [
-        chunked ? `${chunked} upload(s) com captura completa` : null,
-        truncados ? `${truncados} upload(s) antigos ainda cortados` : null,
-        falhas ? `${falhas} upload(s) com falha foram ignorados` : null,
-        totalLinhas ? `${totalLinhas.toLocaleString()} linha(s) lidas da base` : null
-      ].filter(Boolean).join(' • ') || 'Base sincronizada';
-      try{ reinitCal(); }catch(uiErr){ console.error('Falha ao reiniciar calendário do motoboys', uiErr); }
-      try{ syncDateInputsFromState(); }catch(uiErr){ console.error('Falha ao sincronizar datas do motoboys', uiErr); }
-      try{ render(); }catch(uiErr){ console.error('Falha ao renderizar dashboard de motoboys', uiErr); }
-      try{ ensureQuickPaymentButtons(); }catch(uiErr){ console.error('Falha ao montar atalhos do motoboys', uiErr); }
-      if(truncados) motoToast(`⚠️ ${truncados} upload(s) antigos ainda estão truncados em 500 linhas. Reenvie-os pelo novo portal.`, 6000);
-      else motoToast(`✅ Dashboard de motoboys sincronizado com ${reports.length} upload(s) do Firebase.`, 3500);
+      try{ localStorage.setItem(CACHE_META_KEY, JSON.stringify({ updated_at: Date.now(), reports: reports.length, valid_reports: validReports, rows: totalLinhas })); }catch(e){}
+
+      setAllCompanyButtonActive();
+      applyLatestMonthRangeFromData(force);
+      reinitCal();
+      render();
+      ensureQuickPaymentButtons();
+      renderCal();
+
+      const totalEnt = RAW.reduce((s,r)=>s + Number(r.entregas||0), 0);
+      if(statusEl) statusEl.textContent = `${RAW.length.toLocaleString()} grupos · ${totalEnt.toLocaleString()} entregas`;
+      if(subEl) subEl.textContent = `${validReports}/${reports.length} relatório(s) com dados de motoboy • ${totalLinhas.toLocaleString()} linha(s) lidas`;
+      if(!silent) motoToast(`✅ Base de motoboys sincronizada com ${totalEnt.toLocaleString()} entregas.`, 3500);
     }catch(err){
       console.error(err);
-      if(statusEl) statusEl.textContent = '❌ Falha ao ler base do Firebase';
-      if(subEl) subEl.textContent = 'Verifique a conexão com o banco';
-      if(!RAW.length){
-        RAW = []; RAW_DETAIL = [];
-      }
-      try{ render(); }catch(uiErr){ console.error('Falha ao renderizar estado de erro do motoboys', uiErr); }
-      motoToast('❌ Erro ao carregar a base de motoboys.', 5000);
+      const statusEl2 = document.getElementById('uploadStatus');
+      const subEl2 = document.getElementById('headerSub');
+      if(statusEl2) statusEl2.textContent = '❌ Erro ao carregar a base de motoboys';
+      if(subEl2) subEl2.textContent = 'Verifique a conexão com o Firebase';
+      if(!silent) motoToast('❌ Não foi possível carregar a base de motoboys.', 5000);
+      render();
+    }finally{
+      window.__motoLoading = false;
     }
   }
+
+  window.pagPresetHoje = function(){
+    const all = getAllDates();
+    if(!all.length) return;
+    const last = all[all.length-1];
+    PAG_FILTROS.de = last;
+    PAG_FILTROS.ate = last;
+    pagUpdateCalLabel();
+    pagRender();
+  };
+  window.pagPresetSemana = function(){
+    const all = getAllDates();
+    if(!all.length) return;
+    const last = all[all.length-1];
+    const end = dateToNum(last);
+    const recent = all.filter(dt => {
+      const diff = end - dateToNum(dt);
+      return diff >= 0 && diff <= 6;
+    });
+    PAG_FILTROS.de = recent[0] || last;
+    PAG_FILTROS.ate = last;
+    pagUpdateCalLabel();
+    pagRender();
+  };
+
   document.querySelectorAll('.btn-upload').forEach((btn, idx) => { if(idx < 2) btn.style.display = 'none'; });
   const uploadDrop = document.getElementById('uploadDrop'); if(uploadDrop) uploadDrop.style.display = 'none';
   const uploadInput = document.getElementById('uploadInput'); if(uploadInput) uploadInput.remove();
-  window.clearAllData = function(){
-    if(!confirm('Recarregar a base direto do Firebase? Isso limpará apenas o cache local.')) return;
-    try{ localStorage.removeItem('motoboys_raw_v2'); localStorage.removeItem('motoboys_raw_detail_v1'); localStorage.removeItem('motoboys_stats_dl_v1'); }catch(e){}
-    loadFromFirebaseMotoboys();
+
+  const __origClearDate = clearDate;
+  clearDate = function(){
+    __origClearDate();
+    applyLatestMonthRangeFromData(true);
+    render();
+    renderCal();
   };
-  function startMotoFirebaseLoad(){
-    if(window.__motoFirebaseStarted) return;
-    window.__motoFirebaseStarted = true;
-    loadFromFirebaseMotoboys();
+
+  window.clearAllData = function(){
+    if(!confirm('Recarregar a base de motoboys? Isso limpará apenas o cache local.')) return;
+    try{
+      localStorage.removeItem('motoboys_raw_v2');
+      localStorage.removeItem('motoboys_raw_detail_v1');
+      localStorage.removeItem('motoboys_stats_dl_v1');
+      localStorage.removeItem(CACHE_META_KEY);
+    }catch(e){}
+    RAW = [];
+    RAW_DETAIL = [];
+    window._uploadStatsByDateLoja = {};
+    loadMotoboysLegacyData({ force:true, silent:false });
+  };
+
+  setAllCompanyButtonActive();
+  if(RAW.length){
+    applyLatestMonthRangeFromData(false);
+    reinitCal();
+    render();
+    ensureQuickPaymentButtons();
+    renderCal();
+  }
+
+  function startMotoLoad(){
+    if(window.__motoInitialLoadStarted) return;
+    window.__motoInitialLoadStarted = true;
+    loadMotoboysLegacyData({ force:false, silent:true });
   }
   if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', () => setTimeout(startMotoFirebaseLoad, 0), { once:true });
+    document.addEventListener('DOMContentLoaded', () => setTimeout(startMotoLoad, 0), { once:true });
   }else{
-    setTimeout(startMotoFirebaseLoad, 0);
+    setTimeout(startMotoLoad, 0);
   }
 })();
 </script>

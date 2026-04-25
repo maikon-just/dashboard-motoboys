@@ -2364,8 +2364,15 @@ function reinitCal(){
 }
 
 initData();
-reinitCal();
+if(RAW.length){
+  reinitCal();
+  applyLatestMonthRangeFromData(false);
+}else{
+  applyCurrentMonthRangeNow(false);
+}
+renderCal();
 render();
+setTimeout(()=>{ try{ ensurePagDataReady(false); }catch(e){} }, 0);
 
 function adjustStickyCards(){
   const hdr = document.querySelector('header');
@@ -4878,17 +4885,6 @@ function pagSyncFromRAW(){
   PAG_EMPS.forEach(emp=>{ PAG_DATA[emp]={}; });
   if(!RAW||RAW.length===0) return;
 
-  // Usa a mesma lógica de agrupamento fuzzy da tela de eficiência
-  // dentro de cada empresa antes de montar a base de pagamentos.
-  const pagMapasPorEmp = {};
-  PAG_EMPS.forEach(emp=>{
-    const nomesEmp = RAW
-      .filter(r => PAG_EMP_LOJA[r.loja]===emp)
-      .map(r => (r && r.nome ? String(r.nome).toUpperCase() : ''))
-      .filter(nome => nome && nome !== '(SEM ENTREGADOR)' && !isNomeEspecial(nome));
-    pagMapasPorEmp[emp] = pagBuildNameGroupMap(nomesEmp);
-  });
-
   // ══════════════════════════════════════════════════════════════════════
   // PASSO 1: acumula por empresa / motoboy(gKey) / dia
   // ──────────────────────────────────────────────────────────────────────
@@ -4906,7 +4902,7 @@ function pagSyncFromRAW(){
     if(isNomeEspecial(nomeRaw)) return;
 
     // Chave de fusão dentro da empresa (número de cadastro tem prioridade)
-    const gk=pagGrupoKey(nomeRaw, pagMapasPorEmp[emp]);
+    const gk=pagGrupoKey(nomeRaw);
 
     if(!PAG_DATA[emp][gk]){
       PAG_DATA[emp][gk]={
@@ -4944,7 +4940,7 @@ function pagSyncFromRAW(){
       const nomeRaw=c.nome?c.nome.toUpperCase():null;
       if(!nomeRaw||nomeRaw==='(SEM ENTREGADOR)') return;
       if(isNomeEspecial(nomeRaw)) return;
-      const gk=pagGrupoKey(nomeRaw, pagMapasPorEmp[emp]);
+      const gk=pagGrupoKey(nomeRaw);
       if(!PAG_DATA[emp][gk]) return;
       const d=PAG_DATA[emp][gk].dias[c.data];
       if(!d) return;
@@ -5028,15 +5024,31 @@ function pagSyncFromRAW(){
 
 // Abrir / fechar overlay
 function abrirPagamentos(){
-  // Sincroniza dados do dashboard → módulo pagamentos
-  pagSyncFromRAW();
-  document.getElementById('pagamentos-overlay').classList.add('show');
+  const overlay = document.getElementById('pagamentos-overlay');
+  if(!overlay) return;
+  overlay.classList.add('show');
   document.body.style.overflow='hidden';
-  pagCalYear=new Date().getFullYear(); pagCalMonth=new Date().getMonth()+1;
+  syncPagFiltersFromDashboard(false);
   pagRenderCal();
-  pagRender();
-  // Ajusta tops das barras fixas após o overlay ficar visível
+  if(__pagCacheReady && __pagCacheSig === currentMotoCacheSignature()){
+    pagRender();
+    requestAnimationFrame(()=>{ adjustPagStickyBars(); });
+    return;
+  }
+  renderPagLoadingState('Carregando pagamentos a partir da base já sincronizada...');
   requestAnimationFrame(()=>{ adjustPagStickyBars(); });
+  setTimeout(async()=>{
+    try{
+      await ensurePagDataReady(false);
+      if(!document.getElementById('pagamentos-overlay')?.classList.contains('show')) return;
+      pagRenderCal();
+      pagRender();
+      requestAnimationFrame(()=>{ adjustPagStickyBars(); });
+    }catch(err){
+      console.error(err);
+      renderPagLoadingState('Não foi possível preparar os pagamentos.');
+    }
+  }, 0);
 }
 function fecharPagamentos(){
   document.getElementById('pagamentos-overlay').classList.remove('show');
@@ -5339,14 +5351,6 @@ function pagRender(){
   // Filtro de nome
   const filtroNome=PAG_FILTROS.nome?pagNomeNorm(PAG_FILTROS.nome):'';
 
-  // Mesmo critério da tela de eficiência para fundir nomes parecidos
-  // quando múltiplas empresas estão selecionadas.
-  const pagMapaNomesVisiveis = (()=>{
-    const nomes=[];
-    ef.forEach(emp=>Object.values(PAG_DATA[emp]).forEach(m=>{ if(m && m.nome) nomes.push(m.nome); }));
-    return pagBuildNameGroupMap(nomes);
-  })();
-
   const temDados=ef.some(emp=>Object.keys(PAG_DATA[emp]).length>0);
   if(!temDados){
     main.innerHTML='<div class="pempty"><div class="pei">🏍️</div><p>Nenhum dado carregado no dashboard. Aguarde a leitura da base sincronizada no Firebase.</p></div>';
@@ -5398,8 +5402,9 @@ function pagRender(){
           }
           const nn=pagNomeNorm(m.nome);
           if(filtroNome&&!nn.includes(filtroNome)) return;
-          // Chave de agrupamento: mesmo agrupamento fuzzy da eficiência
-          const gKey=pagGrupoKey(m.nome, pagMapaNomesVisiveis);
+          // Chave de agrupamento: número de cadastro ou nome normalizado
+          const num=pagNumCadastro(m.nome);
+          const gKey=num||nn;
           if(!grupoMap[gKey]){
             grupoMap[gKey]={nome:m.nome,gKey,emps:[],totalValEnt:0,totalQtd:0,turnos:new Set()};
           }
@@ -5487,7 +5492,7 @@ function pagRender(){
           const nn=pagNomeNorm(m.nome);
           if(filtroNome&&!nn.includes(filtroNome)) return;
           // Agrupa pelo número de cadastro (evita duplicatas com nomes levemente diferentes)
-          const gKey=pagGrupoKey(m.nome, pagMapaNomesVisiveis);
+          const gKey=pagGrupoKey(m.nome);
           if(!grupoMap[gKey]){
             grupoMap[gKey]={nome:m.nome,gKey,emps:[],totalValEnt:0,totalQtd:0,turnos:new Set()};
           }
@@ -5685,20 +5690,10 @@ function pagSetPix(nn,val){
   try{localStorage.setItem('mpag_pix_v2',JSON.stringify(pagPixMap));}catch(e){}
 }
 
-function pagBuildNameGroupMap(nomes){
-  const lista=[...new Set((nomes||[]).map(pagNomeNorm).filter(Boolean))];
-  return lista.length ? construirGruposNomes(lista) : {};
-}
-
-// ── Helper: chave de agrupamento para pagamentos
-// Prioriza nº de cadastro. Quando não houver, aplica a mesma fusão fuzzy
-// usada pela tela de eficiência (nomesIguais + construirGruposNomes).
-function pagGrupoKey(nome, mapaNomes){
+// ── Helper: chave de agrupamento para resumo (usa nº cadastro se disponível)
+function pagGrupoKey(nome){
   const num=pagNumCadastro(nome);
-  if(num) return 'ID:'+num;
-  const nn=pagNomeNorm(nome);
-  const rep=(mapaNomes && mapaNomes[nn]) ? mapaNomes[nn] : nn;
-  return 'NM:'+rep;
+  return num||pagNomeNorm(nome);
 }
 
 // Resumo financeiro
@@ -6204,6 +6199,94 @@ function pagAbrirCadastroPix(){
     return `${y}-${m}`;
   }
   function sameMonthBr(a,b){ return monthKeyFromBr(a) && monthKeyFromBr(a) === monthKeyFromBr(b); }
+  function currentMonthRangeBr(baseDate=new Date()){
+    return {
+      from: `01/${pad2(baseDate.getMonth()+1)}/${baseDate.getFullYear()}`,
+      to: `${pad2(baseDate.getDate())}/${pad2(baseDate.getMonth()+1)}/${baseDate.getFullYear()}`
+    };
+  }
+  function applyCurrentMonthRangeNow(force=false){
+    const range = currentMonthRangeBr();
+    if(force || (!fDataDe && !fDataAte)){
+      fDataDe = range.from;
+      fDataAte = range.to;
+    }
+    const inputDe = document.getElementById('inputDe');
+    const inputAte = document.getElementById('inputAte');
+    if(inputDe) inputDe.value = fDataDe || '';
+    if(inputAte) inputAte.value = fDataAte || '';
+    const calLabel = document.getElementById('calLabel');
+    if(calLabel){
+      if(fDataDe && fDataAte && fDataDe !== fDataAte) calLabel.textContent = '📅 ' + fDataDe.slice(0,5) + ' → ' + fDataAte.slice(0,5);
+      else if(fDataDe) calLabel.textContent = '📅 ' + fDataDe;
+      else calLabel.textContent = '📅 Selecione o período';
+    }
+    syncDateInputsFromState();
+    const now = new Date();
+    calYear = now.getFullYear();
+    calMonth = now.getMonth();
+  }
+  function motoYield(){ return new Promise(resolve => setTimeout(resolve, 0)); }
+  let __pagCacheSig = '';
+  let __pagCacheReady = false;
+  let __pagSyncPromise = null;
+  function currentMotoCacheSignature(){
+    const first = RAW[0]?.data || '';
+    const last = RAW[RAW.length-1]?.data || '';
+    return [RAW.length, RAW_DETAIL.length, first, last].join('|');
+  }
+  function invalidatePagCache(){
+    __pagCacheSig = '';
+    __pagCacheReady = false;
+    __pagSyncPromise = null;
+  }
+  function syncPagFiltersFromDashboard(force=false){
+    if(force || (!PAG_FILTROS.de && !PAG_FILTROS.ate)){
+      if(fDataDe || fDataAte){
+        PAG_FILTROS.de = fDataDe || fDataAte || '';
+        PAG_FILTROS.ate = fDataAte || fDataDe || '';
+      }else{
+        const range = currentMonthRangeBr();
+        PAG_FILTROS.de = range.from;
+        PAG_FILTROS.ate = range.to;
+      }
+    }
+    pagCalTempDe = PAG_FILTROS.de || '';
+    pagCalTempAte = PAG_FILTROS.ate || '';
+    const refDate = PAG_FILTROS.ate || PAG_FILTROS.de;
+    if(refDate){
+      const ref = parseDate(refDate);
+      pagCalYear = ref.y;
+      pagCalMonth = ref.m + 1;
+    }else{
+      const now = new Date();
+      pagCalYear = now.getFullYear();
+      pagCalMonth = now.getMonth() + 1;
+    }
+    const pde = document.getElementById('pcal-de');
+    const pate = document.getElementById('pcal-ate');
+    if(pde) pde.value = pagCalTempDe;
+    if(pate) pate.value = pagCalTempAte;
+    pagUpdateCalLabel();
+  }
+  function renderPagLoadingState(msg='Preparando pagamentos...'){
+    const main = document.getElementById('pag-main');
+    if(!main) return;
+    main.innerHTML = `<div class="pempty"><div class="pei">⏳</div><p>${msg}</p></div>`;
+  }
+  async function ensurePagDataReady(force=false){
+    const sig = currentMotoCacheSignature();
+    if(!force && __pagCacheReady && __pagCacheSig === sig) return;
+    if(!force && __pagSyncPromise && __pagCacheSig === sig) return __pagSyncPromise;
+    __pagCacheSig = sig;
+    __pagCacheReady = false;
+    __pagSyncPromise = (async()=>{
+      await motoYield();
+      pagSyncFromRAW();
+      __pagCacheReady = true;
+    })();
+    return __pagSyncPromise;
+  }
   function setCalToLatestData(){
     const all = getAllDates();
     if(!all.length) return;
@@ -6406,13 +6489,23 @@ function pagAbrirCadastroPix(){
       let totalLinhas = 0;
       let validReports = 0;
 
-      for(let i=0;i<reports.length;i++){
-        const rep = reports[i];
-        if(statusEl) statusEl.textContent = `⏳ Carregando base de motoboys... ${i+1}/${reports.length}`;
-        const { rows, totalOriginal } = await motoFetchReportRows(rep);
-        totalLinhas += totalOriginal || rows.length;
-        if(rows.some(rowLooksLikeMotoboys)) validReports++;
-        ingestMotoRows(rows, map, detail, stats, counters, seenPedidos, rep.id);
+      const batchSize = 6;
+      for(let start=0; start<reports.length; start += batchSize){
+        const slice = reports.slice(start, start + batchSize);
+        const batch = await Promise.all(slice.map(async(rep, offset) => {
+          const idx = start + offset;
+          if(statusEl) statusEl.textContent = `⏳ Carregando base de motoboys... ${idx+1}/${reports.length}`;
+          const loaded = await motoFetchReportRows(rep);
+          return { rep, idx, ...loaded };
+        }));
+        batch.sort((a,b)=>a.idx-b.idx);
+        for(const item of batch){
+          const rows = item.rows || [];
+          totalLinhas += item.totalOriginal || rows.length;
+          if(rows.some(rowLooksLikeMotoboys)) validReports++;
+          ingestMotoRows(rows, map, detail, stats, counters, seenPedidos, item.rep.id);
+        }
+        await motoYield();
       }
 
       RAW = Object.values(map).sort((a,b) => dateToNum(a.data) - dateToNum(b.data));
@@ -6426,12 +6519,14 @@ function pagAbrirCadastroPix(){
       try{ localStorage.setItem('motoboys_stats_dl_v1', JSON.stringify(window._uploadStatsByDateLoja)); }catch(e){}
       try{ localStorage.setItem(CACHE_META_KEY, JSON.stringify({ updated_at: Date.now(), reports: reports.length, valid_reports: validReports, rows: totalLinhas })); }catch(e){}
 
+      invalidatePagCache();
       setAllCompanyButtonActive();
       applyLatestMonthRangeFromData(force);
       reinitCal();
       render();
       ensureQuickPaymentButtons();
       renderCal();
+      setTimeout(()=>{ ensurePagDataReady(true).catch(()=>{}); }, 0);
 
       const totalEnt = RAW.reduce((s,r)=>s + Number(r.entregas||0), 0);
       if(statusEl) statusEl.textContent = `${RAW.length.toLocaleString()} grupos · ${totalEnt.toLocaleString()} entregas`;
@@ -6512,12 +6607,12 @@ function pagAbrirCadastroPix(){
   function startMotoLoad(){
     if(window.__motoInitialLoadStarted) return;
     window.__motoInitialLoadStarted = true;
-    loadMotoboysLegacyData({ force:false, silent:true });
+    setTimeout(() => loadMotoboysLegacyData({ force:false, silent:true }), 60);
   }
   if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', () => setTimeout(startMotoLoad, 0), { once:true });
+    document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(() => requestAnimationFrame(startMotoLoad)), { once:true });
   }else{
-    setTimeout(startMotoLoad, 0);
+    requestAnimationFrame(() => requestAnimationFrame(startMotoLoad));
   }
 })();
 </script>
