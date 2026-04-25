@@ -1063,7 +1063,6 @@ function getDashboardDateBounds(){
   if(fDataDe || fDataAte){
     return { de: fDataDe || fDataAte || '', ate: fDataAte || fDataDe || '', implicit: false };
   }
-  if(fLojas && fLojas.has && fLojas.has('todas')) return { de:'', ate:'', implicit:true };
   return getImplicitDashboardRange(60);
 }
 function syncDateInputsFromState(){
@@ -1447,6 +1446,20 @@ function render(){
         <div style="font-size:3rem">📂</div>
         <div style="font-size:1rem;margin-top:8px;color:var(--text)">Base vazia</div>
         <div style="font-size:.85rem;margin-top:6px">Nenhum dado foi encontrado na base já sincronizada do Firebase.</div>
+      </div>`;
+    document.getElementById('tableBody').innerHTML = '';
+    document.getElementById('tableHead').innerHTML = '';
+    document.getElementById('tableCount').textContent = '';
+    destroyAll();
+    return;
+  }
+
+  if(!hasActiveDashboardFilters()){
+    document.getElementById('cardsContainer').innerHTML =
+      `<div style="grid-column:1/-1;text-align:center;padding:32px;color:var(--muted)">
+        <div style="font-size:3rem">🔎</div>
+        <div style="font-size:1rem;margin-top:8px;color:var(--text)">Aplique um filtro para visualizar os dados</div>
+        <div style="font-size:.85rem;margin-top:6px">Os filtros começam vazios e os resultados serão exibidos usando a base já enviada ao Firebase.</div>
       </div>`;
     document.getElementById('tableBody').innerHTML = '';
     document.getElementById('tableHead').innerHTML = '';
@@ -5188,7 +5201,7 @@ function pagLimparTudo(){
   // Apenas limpa extras e PIX salvos
   if(!confirm('Limpar valores extras e chaves Pix salvos?')) return;
   pagExtrasMap={}; pagPixMap={};
-  try{localStorage.removeItem('mpag_extras_v2');localStorage.removeItem('mpag_pix_v2');localStorage.removeItem('mpag_pix_history_v1');}catch(e){}
+  try{localStorage.removeItem('mpag_extras_v2');localStorage.removeItem('mpag_pix_v2');}catch(e){}
   showToast('🗑️ Extras e PIX removidos. Dados de entrega mantidos.');
   pagSyncFromRAW();
   pagRender();
@@ -5416,138 +5429,6 @@ function pagBuildDashboardAlignedDayMap(dt){
     };
   });
   return map;
-}
-
-function pagBuildFilteredSnapshot(){
-  const ef=PAG_FILTROS.emps.has('todas')?PAG_EMPS:[...PAG_FILTROS.emps];
-  const deN=pagDateNum(PAG_FILTROS.de), ateN=pagDateNum(PAG_FILTROS.ate);
-  const filtroNome=PAG_FILTROS.nome?pagNomeNorm(PAG_FILTROS.nome):'';
-  const temDados=ef.some(emp=>Object.keys(PAG_DATA[emp]).length>0);
-  const empsComDados=ef.filter(emp=>Object.keys(PAG_DATA[emp]).length>0);
-  const modoMulti=empsComDados.length>1;
-  const diasSet=new Set();
-  ef.forEach(emp=>Object.values(PAG_DATA[emp]).forEach(m=>Object.keys(m.dias).forEach(dt=>{
-    if(deN&&pagDateNum(dt)<deN) return;
-    if(ateN&&pagDateNum(dt)>ateN) return;
-    diasSet.add(dt);
-  })));
-  const diasOrdenados=[...diasSet].sort((a,b)=>pagDateNum(a)-pagDateNum(b));
-  const diasPivot={};
-
-  if(modoMulti){
-    diasOrdenados.forEach(dt=>{
-      const entradas=[];
-      ef.forEach(emp=>{
-        Object.values(PAG_DATA[emp]).forEach(m=>{
-          if(!m.dias[dt]) return;
-          const d=m.dias[dt];
-          if(PAG_FILTROS.turno!=='todos'){
-            const turnosM=(d.turnos?[...d.turnos]:[d.turno||'Noite']);
-            if(!turnosM.includes(PAG_FILTROS.turno)) return;
-          }
-          const nn=pagNomeNorm(m.nome);
-          if(filtroNome&&!nn.includes(filtroNome)) return;
-          entradas.push({ emp, m, d, nn, num: pagNumCadastro(m.nome) });
-        });
-      });
-      if(!entradas.length) return;
-      const nomesSemCadastro=[...new Set(entradas.filter(x=>!x.num).map(x=>x.nn))];
-      const mapaFuzzy=nomesSemCadastro.length && typeof construirGruposNomes === 'function'
-        ? construirGruposNomes(nomesSemCadastro)
-        : Object.fromEntries(nomesSemCadastro.map(nn=>[nn,nn]));
-      const dashMap = pagBuildDashboardAlignedDayMap(dt);
-      const grupoMap={};
-      entradas.forEach(({emp,m,d,nn,num})=>{
-        const repNome = num ? nn : (mapaFuzzy[nn] || nn);
-        const gKey = num ? `NUM:${num}` : `NOME:${repNome}`;
-        if(!grupoMap[gKey]) grupoMap[gKey]={nome:m.nome,gKey,emps:[],totalValEnt:0,totalQtd:0,turnos:new Set()};
-        if(m.nome.length>grupoMap[gKey].nome.length) grupoMap[gKey].nome=m.nome;
-        const eKey=nn+'|'+dt+'|'+emp;
-        const extra=parseFloat(pagExtrasMap[eKey]||0);
-        const chuvaVal=parseFloat(pagExtrasMap[eKey+'|chuva']||0);
-        grupoMap[gKey].emps.push({emp,d,eKey,extra,chuvaVal,nn});
-        const ts=d.turnos?[...d.turnos]:[d.turno||'Noite'];
-        ts.forEach(t=>grupoMap[gKey].turnos.add(t));
-      });
-      Object.values(grupoMap).forEach(g=>{
-        const manual = g.emps.reduce((s,ie)=>s + (ie.extra||0) + (ie.chuvaVal||0), 0);
-        const aligned = dashMap[g.gKey];
-        if(aligned){
-          if(aligned.nome && aligned.nome.length > g.nome.length) g.nome = aligned.nome;
-          g.totalQtd = aligned.totalQtd || g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0);
-          g.totalValEnt = (aligned.totalAligned || 0) + manual;
-          g.emps._groupMeta = aligned;
-        }else{
-          g.totalQtd = g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0);
-          g.totalValEnt = g.emps.reduce((s,ie)=>s+(ie.d.totalValEnt||0)+(ie.extra||0)+(ie.chuvaVal||0),0);
-        }
-      });
-      if(Object.keys(grupoMap).length>0) diasPivot[dt]=Object.values(grupoMap).sort((a,b)=>(b.totalValEnt-a.totalValEnt)||a.nome.localeCompare(b.nome,'pt-BR'));
-    });
-  } else {
-    diasOrdenados.forEach(dt=>{
-      const grupoMap={};
-      ef.forEach(emp=>{
-        Object.values(PAG_DATA[emp]).forEach(m=>{
-          if(!m.dias[dt]) return;
-          const d=m.dias[dt];
-          if(PAG_FILTROS.turno!=='todos'){
-            const turnosDoMoto=(d.turnos?[...d.turnos]:[d.turno||'Noite']);
-            if(!turnosDoMoto.includes(PAG_FILTROS.turno)) return;
-          }
-          const nn=pagNomeNorm(m.nome);
-          if(filtroNome&&!nn.includes(filtroNome)) return;
-          const gKey=pagGrupoKey(m.nome);
-          if(!grupoMap[gKey]) grupoMap[gKey]={nome:m.nome,gKey,emps:[],totalValEnt:0,totalQtd:0,turnos:new Set()};
-          if(m.nome.length>grupoMap[gKey].nome.length) grupoMap[gKey].nome=m.nome;
-          const eKey=nn+'|'+dt+'|'+emp;
-          const extra=parseFloat(pagExtrasMap[eKey]||0);
-          const chuvaVal=parseFloat(pagExtrasMap[eKey+'|chuva']||0);
-          grupoMap[gKey].emps.push({emp,d,eKey,extra,chuvaVal,nn});
-          const ts=d.turnos?[...d.turnos]:[d.turno||'Noite'];
-          ts.forEach(t=>grupoMap[gKey].turnos.add(t));
-        });
-      });
-      const dashMap = pagBuildDashboardAlignedDayMap(dt);
-      Object.values(grupoMap).forEach(g=>{
-        const manual = g.emps.reduce((s,ie)=>s + (ie.extra||0) + (ie.chuvaVal||0), 0);
-        const aligned = dashMap[g.gKey];
-        if(aligned){
-          if(aligned.nome && aligned.nome.length > g.nome.length) g.nome = aligned.nome;
-          g.totalQtd = aligned.totalQtd || g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0);
-          g.totalValEnt = (aligned.totalAligned || 0) + manual;
-          g.emps._groupMeta = aligned;
-        }else{
-          g.totalQtd = g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0);
-          g.totalValEnt = g.emps.reduce((s,ie)=>s+(ie.d.totalValEnt||0)+(ie.extra||0)+(ie.chuvaVal||0),0);
-        }
-      });
-      if(Object.keys(grupoMap).length>0) diasPivot[dt]=Object.values(grupoMap).sort((a,b)=>(b.totalValEnt-a.totalValEnt)||a.nome.localeCompare(b.nome,'pt-BR'));
-    });
-  }
-  const diasFiltrados=Object.keys(diasPivot).sort((a,b)=>pagDateNum(a)-pagDateNum(b));
-  return { ef, temDados, diasPivot, diasFiltrados };
-}
-
-function pagBuildResumoList(){
-  const snap=pagBuildFilteredSnapshot();
-  const consolidado={};
-  snap.diasFiltrados.forEach(dt=>{
-    (snap.diasPivot[dt]||[]).forEach(g=>{
-      const key=g.gKey||pagGrupoKey(g.nome);
-      if(!consolidado[key]) consolidado[key]={nome:g.nome,gKey:key,porEmp:{},total:0,totalEntrega:0,qtd:0,datas:new Set()};
-      if(g.nome.length>consolidado[key].nome.length) consolidado[key].nome=g.nome;
-      consolidado[key].datas.add(dt);
-      consolidado[key].total += (g.totalValEnt||0);
-      consolidado[key].qtd += (g.totalQtd||0);
-      g.emps.forEach(ie=>{
-        consolidado[key].totalEntrega += (ie.d.totalEntrega||0);
-        consolidado[key].porEmp[ie.emp]=(consolidado[key].porEmp[ie.emp]||0)+((ie.d.totalValEnt||0)+(ie.extra||0)+(ie.chuvaVal||0));
-      });
-    });
-  });
-  const lista=Object.values(consolidado).filter(v=>v.qtd>0).sort((a,b)=>(b.total-a.total)||a.nome.localeCompare(b.nome,'pt-BR'));
-  return { ...snap, lista };
 }
 
 // Render
@@ -5937,16 +5818,53 @@ function pagGrupoKey(nome){
 
 // Resumo financeiro
 function pagGerarResumo(){
-  const snap=pagBuildResumoList();
-  const ef=snap.ef;
-  const lista=snap.lista;
-  if(!snap.temDados){ showToast('⚠️ Nenhum dado carregado. Faça upload de um relatório na tela principal primeiro.'); return; }
-  if(lista.length===0){ showToast('⚠️ Nenhum dado encontrado para os filtros selecionados. Verifique empresa, data e turno.'); return; }
+  const ef=PAG_FILTROS.emps.has('todas')?PAG_EMPS:[...PAG_FILTROS.emps];
+  // Verifica se há dados
+  const temDados=ef.some(emp=>Object.keys(PAG_DATA[emp]).length>0);
+  if(!temDados){
+    showToast('⚠️ Nenhum dado carregado. Faça upload de um relatório na tela principal primeiro.');
+    return;
+  }
+  const deN=pagDateNum(PAG_FILTROS.de), ateN=pagDateNum(PAG_FILTROS.ate);
   const empNames={burger:'Just Burger',gourmet:'Gourmet',forneria:'Aham Forneria',sushi:'Aham Sushi'};
   const empColors={burger:'#4a90e2',gourmet:'#9b59b6',forneria:'#e67e22',sushi:'#16a085'};
+  // consolidado: gKey → { nome, nn, porEmp, total, totalEntrega, qtd }
+  // gKey = número de cadastro ou nome normalizado (mesma lógica do pagRender)
+  const consolidado={};
+  ef.forEach(emp=>{
+    Object.values(PAG_DATA[emp]).forEach(m=>{
+      const nn=pagNomeNorm(m.nome);
+      const gKey=pagGrupoKey(m.nome);
+      if(!consolidado[gKey]) consolidado[gKey]={nome:m.nome,nn,porEmp:{},total:0,totalEntrega:0,qtd:0};
+      if(m.nome.length>consolidado[gKey].nome.length){ consolidado[gKey].nome=m.nome; consolidado[gKey].nn=nn; }
+      if(!consolidado[gKey].porEmp[emp]) consolidado[gKey].porEmp[emp]=0;
+      Object.entries(m.dias).forEach(([dt,d])=>{
+        const dn=pagDateNum(dt);
+        if(deN&&dn<deN) return; if(ateN&&dn>ateN) return;
+        if(PAG_FILTROS.turno!=='todos'){const turnosM=(d.turnos?[...d.turnos]:[d.turno||'Noite']);if(!turnosM.includes(PAG_FILTROS.turno)) return;}
+        const eKey=nn+'|'+dt+'|'+emp;
+        const extra=parseFloat(pagExtrasMap[eKey]||0);
+        const chuva=parseFloat(pagExtrasMap[eKey+'|chuva']||0);
+        const val=d.totalValEnt+extra+chuva;
+        consolidado[gKey].porEmp[emp]=(consolidado[gKey].porEmp[emp]||0)+val;
+        consolidado[gKey].total+=val;
+        consolidado[gKey].totalEntrega+=d.totalEntrega;
+        consolidado[gKey].qtd+=d.qtd;
+      });
+    });
+  });
+  const lista=Object.values(consolidado).filter(v=>v.qtd>0).map(v=>{
+    const empMaior=Object.entries(v.porEmp||{}).sort((a,b)=>(b[1]-a[1])||String(empNames[a[0]]||a[0]).localeCompare(String(empNames[b[0]]||b[0]),'pt-BR'))[0]?.[0]||'';
+    return {...v, empMaior};
+  }).sort((a,b)=>String(empNames[a.empMaior]||a.empMaior).localeCompare(String(empNames[b.empMaior]||b.empMaior),'pt-BR')||(b.total-a.total)||a.nome.localeCompare(b.nome,'pt-BR'));
+  if(lista.length===0){
+    showToast('⚠️ Nenhum dado encontrado para os filtros selecionados. Verifique empresa, data e turno.');
+    return;
+  }
   const totalGeral=lista.reduce((s,m)=>s+m.total,0);
   const totalEntGeral=lista.reduce((s,m)=>s+m.totalEntrega,0);
-  const empCols=ef.filter(emp=>lista.some(m=>(m.porEmp[emp]||0)>0));
+  // Cabeçalhos dinâmicos por empresa
+  const empCols=ef.filter(emp=>lista.some(m=>m.porEmp[emp]>0));
   let theadEmp=empCols.map(e=>`<th style="text-align:right;color:${empColors[e]||'var(--accent)'}">${empNames[e]}</th>`).join('');
   let html=`<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;padding:12px 14px;background:var(--card);border-radius:9px;border:1px solid var(--border)">
     <span style="font-size:.8rem;color:var(--muted)">Total a pagar: <b style="color:var(--green);font-size:1.05rem">R$ ${totalGeral.toFixed(2)}</b></span>
@@ -5954,18 +5872,35 @@ function pagGerarResumo(){
     <button class="pbtn-hdr" onclick="pagRender()" style="margin-left:auto">← Voltar aos dias</button>
   </div>
   <table class="presumo-table">
-    <thead><tr><th>#</th><th>Motoboy</th><th>Chave Pix</th><th style="text-align:right">Entregas</th><th style="text-align:right">Taxa Recebida</th>${theadEmp}<th style="text-align:right">💰 Total a Pagar</th></tr></thead><tbody>`;
+    <thead><tr>
+      <th>#</th><th>Motoboy</th><th>Chave Pix</th>
+      <th style="text-align:right">Entregas</th>
+      <th style="text-align:right">Taxa Recebida</th>
+      ${theadEmp}
+      <th style="text-align:right">💰 Total a Pagar</th>
+    </tr></thead><tbody>`;
   lista.forEach((m,i)=>{
-    const datas=[...m.datas].sort((a,b)=>pagDateNum(a)-pagDateNum(b));
-    const pixDate=datas.length===1?datas[0]:'';
-    const nn=pagNomeNorm(m.nome);
-    const pix=pagGetPixForDate(nn,pixDate||PAG_FILTROS.de||PAG_FILTROS.ate||'');
-    const pixTitle=pagPixHistoryTitle(nn);
-    const empCells=empCols.map(e=>`<td style="text-align:right;color:${empColors[e]||'var(--accent)'}">R$ ${(m.porEmp[e]||0).toFixed(2)}</td>`).join('');
-    html+=`<tr><td style="color:var(--muted)">${i+1}</td><td style="font-weight:700">${m.nome}</td><td><input class="ppix-inp" value="${pix}" placeholder="Cole a chave Pix..." title="${pixTitle}" onchange="pagSetPix('${nn}',this.value,'${pixDate}')" style="width:160px"></td><td style="text-align:right">${m.qtd}</td><td style="text-align:right;color:var(--gold)">R$ ${m.totalEntrega.toFixed(2)}</td>${empCells}<td style="text-align:right;font-weight:800;color:var(--green)">R$ ${m.total.toFixed(2)}</td></tr>`;
+    const pix=pagGetPixForDate(m.nn,PAG_FILTROS.ate||PAG_FILTROS.de||'');
+    let empCells=empCols.map(e=>`<td style="text-align:right;color:${empColors[e]||'var(--accent)'}">R$ ${(m.porEmp[e]||0).toFixed(2)}</td>`).join('');
+    html+=`<tr>
+      <td style="color:var(--muted)">${i+1}</td>
+      <td style="font-weight:700">${m.nome}</td>
+      <td><input class="ppix-inp" value="${pix}" placeholder="Cole a chave Pix..."
+          onchange="pagSetPix('${m.nn}',this.value,'${PAG_FILTROS.ate||PAG_FILTROS.de||''}')" title="${pagPixHistoryTitle(m.nn)}" style="width:160px"></td>
+      <td style="text-align:right">${m.qtd}</td>
+      <td style="text-align:right;color:var(--gold)">R$ ${m.totalEntrega.toFixed(2)}</td>
+      ${empCells}
+      <td style="text-align:right;font-weight:800;color:var(--green)">R$ ${m.total.toFixed(2)}</td>
+    </tr>`;
   });
   const totalFootEmp=empCols.map(e=>`<td style="text-align:right;font-weight:700;color:${empColors[e]||'var(--accent)'}">R$ ${lista.reduce((s,m)=>s+(m.porEmp[e]||0),0).toFixed(2)}</td>`).join('');
-  html+=`</tbody><tfoot><tr><td colspan="3" style="font-weight:700">TOTAL GERAL</td><td style="text-align:right;font-weight:700">${lista.reduce((s,m)=>s+m.qtd,0)}</td><td style="text-align:right;color:var(--gold);font-weight:700">R$ ${totalEntGeral.toFixed(2)}</td>${totalFootEmp}<td style="text-align:right;color:var(--green);font-weight:800;font-size:1.05rem">R$ ${totalGeral.toFixed(2)}</td></tr></tfoot></table>`;
+  html+=`</tbody><tfoot><tr>
+    <td colspan="3" style="font-weight:700">TOTAL GERAL</td>
+    <td style="text-align:right;font-weight:700">${lista.reduce((s,m)=>s+m.qtd,0)}</td>
+    <td style="text-align:right;color:var(--gold);font-weight:700">R$ ${totalEntGeral.toFixed(2)}</td>
+    ${totalFootEmp}
+    <td style="text-align:right;color:var(--green);font-weight:800;font-size:1.05rem">R$ ${totalGeral.toFixed(2)}</td>
+  </tr></tfoot></table>`;
   document.getElementById('pag-main').innerHTML=html;
 }
 
@@ -6120,32 +6055,76 @@ function pagResumoFinanceiro(){
 }
 
 function pagExportarExcel(){
-  const snap=pagBuildResumoList();
-  const lista=snap.lista;
-  const ef=snap.ef;
+  const ef=PAG_FILTROS.emps.has('todas')?PAG_EMPS:[...PAG_FILTROS.emps];
+  const deN=pagDateNum(PAG_FILTROS.de), ateN=pagDateNum(PAG_FILTROS.ate);
   const empNames={burger:'Just Burger',gourmet:'Gourmet',forneria:'Aham Forneria',sushi:'Aham Sushi'};
+  // consolidado: gKey → { nome, nn, pix, porEmp:{empKey→val}, total, qtd }
+  // gKey = número de cadastro ou nome normalizado (mesma lógica do pagRender)
+  const consolidado={};
+  ef.forEach(emp=>{
+    Object.values(PAG_DATA[emp]).forEach(m=>{
+      const nn=pagNomeNorm(m.nome);
+      const gKey=pagGrupoKey(m.nome);
+      if(!consolidado[gKey]) consolidado[gKey]={nome:m.nome,nn,porEmp:{},total:0,totalEntrega:0,qtd:0};
+      if(m.nome.length>consolidado[gKey].nome.length){ consolidado[gKey].nome=m.nome; consolidado[gKey].nn=nn; }
+      if(!consolidado[gKey].porEmp[emp]) consolidado[gKey].porEmp[emp]=0;
+      Object.entries(m.dias).forEach(([dt,d])=>{
+        const dn=pagDateNum(dt);
+        if(deN&&dn<deN) return; if(ateN&&dn>ateN) return;
+        if(PAG_FILTROS.turno!=='todos'){const turnosM=(d.turnos?[...d.turnos]:[d.turno||'Noite']);if(!turnosM.includes(PAG_FILTROS.turno)) return;}
+        const eKey=nn+'|'+dt+'|'+emp;
+        const extra=parseFloat(pagExtrasMap[eKey]||0);
+        const chuva=parseFloat(pagExtrasMap[eKey+'|chuva']||0);
+        const val=d.totalValEnt+extra+chuva;
+        consolidado[gKey].porEmp[emp]=(consolidado[gKey].porEmp[emp]||0)+val;
+        consolidado[gKey].total+=val;
+        consolidado[gKey].totalEntrega+=d.totalEntrega;
+        consolidado[gKey].qtd+=d.qtd;
+      });
+    });
+  });
+  const lista=Object.entries(consolidado)
+    .filter(([,v])=>v.qtd>0)
+    .map(([gKey,m])=>{
+      const empMaior=Object.entries(m.porEmp||{}).sort((a,b)=>(b[1]-a[1])||String(empNames[a[0]]||a[0]).localeCompare(String(empNames[b[0]]||b[0]),'pt-BR'))[0]?.[0]||'';
+      return [gKey,{...m,empMaior}];
+    })
+    .sort((a,b)=>String(empNames[a[1].empMaior]||a[1].empMaior).localeCompare(String(empNames[b[1].empMaior]||b[1].empMaior),'pt-BR')||(b[1].total-a[1].total)||a[1].nome.localeCompare(b[1].nome,'pt-BR'));
   if(lista.length===0){showToast('⚠️ Sem dados para exportar.');return;}
-  const empCols=ef.filter(emp=>lista.some(m=>(m.porEmp[emp]||0)>0));
+  const empCols=ef.filter(emp=>lista.some(([,m])=>m.porEmp[emp]>0));
+  // Monta headers dinâmicos por empresa selecionada
   const headers=['#','Motoboy','Chave Pix',...empCols.map(e=>'R$ '+empNames[e]),'R$ Total a Pagar'];
-  const aoa=[headers];
-  lista.forEach((m,i)=>{
-    const datas=[...m.datas].sort((a,b)=>pagDateNum(a)-pagDateNum(b));
-    const pixDate=datas.length===1?datas[0]:'';
-    const row=[i+1,m.nome,pagGetPixForDate(pagNomeNorm(m.nome),pixDate||PAG_FILTROS.de||PAG_FILTROS.ate||'')];
+  const aoa=[headers]; // array-of-arrays para controle de formato
+  lista.forEach(([gKey,m],i)=>{
+    const row=[i+1,m.nome,pagGetPixForDate(m.nn||gKey,PAG_FILTROS.ate||PAG_FILTROS.de||'')||''];
     empCols.forEach(emp=>row.push(+(m.porEmp[emp]||0).toFixed(2)));
     row.push(+m.total.toFixed(2));
     aoa.push(row);
   });
+  // Linha de totais
   const totRow=['','TOTAL GERAL',''];
-  empCols.forEach(emp=>totRow.push(+lista.reduce((s,m)=>s+(m.porEmp[emp]||0),0).toFixed(2)));
-  totRow.push(+lista.reduce((s,m)=>s+m.total,0).toFixed(2));
+  empCols.forEach(emp=>totRow.push(+lista.reduce((s,[,m])=>s+(m.porEmp[emp]||0),0).toFixed(2)));
+  totRow.push(+lista.reduce((s,[,m])=>s+m.total,0).toFixed(2));
   aoa.push(totRow);
   const ws=XLSX.utils.aoa_to_sheet(aoa);
+  // Formata colunas de valor como moeda R$
   const fmtMoeda='"R$"#,##0.00';
   const nRows=aoa.length; const nCols=headers.length;
-  for(let c=3;c<nCols;c++) for(let r=1;r<nRows;r++){ const addr=XLSX.utils.encode_cell({r,c}); if(ws[addr]&&typeof ws[addr].v==='number'){ ws[addr].z=fmtMoeda; ws[addr].t='n'; } }
-  const colWidths=[{wch:4},{wch:34},{wch:26}]; empCols.forEach(()=>colWidths.push({wch:20})); colWidths.push({wch:20}); ws['!cols']=colWidths;
-  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'Pagamentos');
+  for(let c=3;c<nCols;c++){
+    for(let r=1;r<nRows;r++){
+      const addr=XLSX.utils.encode_cell({r,c});
+      if(ws[addr]&&typeof ws[addr].v==='number'){
+        ws[addr].z=fmtMoeda;
+        ws[addr].t='n';
+      }
+    }
+  }
+  const colWidths=[{wch:4},{wch:34},{wch:26}];
+  empCols.forEach(()=>colWidths.push({wch:20}));
+  colWidths.push({wch:20});
+  ws['!cols']=colWidths;
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'Pagamentos');
   const per=PAG_FILTROS.de&&PAG_FILTROS.ate?`_${PAG_FILTROS.de.replace(/\//g,'-')}_a_${PAG_FILTROS.ate.replace(/\//g,'-')}`:'';
   XLSX.writeFile(wb,`Pagamentos${per}_${new Date().toLocaleDateString('pt-BR').replace(/\//g,'-')}.xlsx`);
   showToast('✅ Excel exportado!');
@@ -6155,16 +6134,53 @@ function pagExportarExcel(){
 // BANCO DE DADOS — Salvar / Visualizar pagamentos registrados
 // ═══════════════════════════════════════════════════════════════
 async function pagSalvarPagamentos(){
-  const snap=pagBuildResumoList();
-  const lista=snap.lista;
+  const ef=PAG_FILTROS.emps.has('todas')?PAG_EMPS:[...PAG_FILTROS.emps];
+  const deN=pagDateNum(PAG_FILTROS.de), ateN=pagDateNum(PAG_FILTROS.ate);
   const periodoDesc=(PAG_FILTROS.de&&PAG_FILTROS.ate)?`${PAG_FILTROS.de} a ${PAG_FILTROS.ate}`:(PAG_FILTROS.de||'todos os dias');
-  if(!confirm(`Salvar pagamentos no banco?
-Período: ${periodoDesc}
-Empresas: ${(snap.ef||[]).map(e=>PAG_EMP_LABEL[e]).join(', ')}`)) return;
-  if(lista.length===0){showToast('⚠️ Nenhum dado para salvar.');return;}
+  if(!confirm(`Salvar pagamentos no banco?\nPeríodo: ${periodoDesc}\nEmpresas: ${ef.map(e=>PAG_EMP_LABEL[e]).join(', ')}`)) return;
   showToast('💾 Salvando...');
-  const registros=lista.map(m=>{ const datas=[...m.datas].sort((a,b)=>pagDateNum(a)-pagDateNum(b)); const pixDate=datas.length===1?datas[0]:''; return { motoboy:m.nome, empresa:(snap.ef||[]).map(e=>PAG_EMP_LABEL[e]||e).join(' + '), turno:PAG_FILTROS.turno, chave_pix:pagGetPixForDate(pagNomeNorm(m.nome),pixDate||PAG_FILTROS.de||PAG_FILTROS.ate||''), entregas:m.qtd, taxa_recebida:+m.totalEntrega.toFixed(2), valor_base:+m.total.toFixed(2), garantido:0, extra:0, total_pagar:+m.total.toFixed(2), periodo_de:PAG_FILTROS.de||'', periodo_ate:PAG_FILTROS.ate||'', data_referencia:(pixDate||PAG_FILTROS.de||new Date().toLocaleDateString('pt-BR')), salvo_em:new Date().toISOString() }; });
-  try{ let ok=0; for(const r of registros){ const resp=await fetch('tables/pagamentos_registros',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(r)}); if(resp.ok) ok++; } showToast(`✅ ${ok} registros salvos no banco!`); }catch(e){showToast('❌ Erro ao salvar: '+e.message);}
+  const registros=[];
+  ef.forEach(emp=>{
+    Object.values(PAG_DATA[emp]).forEach(m=>{
+      const nn=pagNomeNorm(m.nome);
+      let totalPagar=0,totalEntrega=0,totalQtd=0,totalGarantido=0,totalExtra=0,totalBase=0;
+      Object.entries(m.dias).forEach(([dt,d])=>{
+        const dn=pagDateNum(dt);
+        if(deN&&dn<deN) return; if(ateN&&dn>ateN) return;
+        if(PAG_FILTROS.turno!=='todos'){const turnosM=(d.turnos?[...d.turnos]:[d.turno||'Noite']);if(!turnosM.includes(PAG_FILTROS.turno)) return;}
+        const eKey=nn+'|'+dt+'|'+emp;
+        const extra=parseFloat(pagExtrasMap[eKey]||0);
+        const chuva=parseFloat(pagExtrasMap[eKey+'|chuva']||0);
+        totalBase+=(d.totalValEnt-(d.garantido||0));
+        totalGarantido+=(d.garantido||0);
+        totalExtra+=extra+chuva;
+        totalPagar+=d.totalValEnt+extra+chuva;
+        totalEntrega+=d.totalEntrega;
+        totalQtd+=d.qtd;
+      });
+      if(totalQtd>0){
+        registros.push({
+          motoboy:m.nome, empresa:emp, turno:PAG_FILTROS.turno,
+          chave_pix:pagGetPixForDate(nn,PAG_FILTROS.ate||PAG_FILTROS.de||''), entregas:totalQtd,
+          taxa_recebida:+totalEntrega.toFixed(2),
+          valor_base:+totalBase.toFixed(2), garantido:+totalGarantido.toFixed(2),
+          extra:+totalExtra.toFixed(2), total_pagar:+totalPagar.toFixed(2),
+          periodo_de:PAG_FILTROS.de||'', periodo_ate:PAG_FILTROS.ate||'',
+          data_referencia:PAG_FILTROS.de||new Date().toLocaleDateString('pt-BR'),
+          salvo_em:new Date().toISOString()
+        });
+      }
+    });
+  });
+  if(registros.length===0){showToast('⚠️ Nenhum dado para salvar.');return;}
+  try{
+    let ok=0;
+    for(const r of registros){
+      const resp=await fetch('tables/pagamentos_registros',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(r)});
+      if(resp.ok) ok++;
+    }
+    showToast(`✅ ${ok} registros salvos no banco!`);
+  }catch(e){showToast('❌ Erro ao salvar: '+e.message);}
 }
 
 async function pagVerHistorico(){
@@ -6214,7 +6230,7 @@ async function pagVerHistorico(){
           <span style="font-size:.85rem;font-weight:700;color:var(--green);margin-left:auto">Total: R$ ${g.total.toFixed(2)}</span>
         </div>
         <table class="presumo-table"><thead><tr>
-          <th>#</th><th>Motoboy</th><th>Empresa</th><th>Data ref.</th><th>Chave Pix</th>
+          <th>#</th><th>Motoboy</th><th>Empresa</th><th>Chave Pix</th>
           <th style="text-align:right">Entregas</th>
           <th style="text-align:right">Base</th>
           <th style="text-align:right">Garantido</th>
@@ -6226,7 +6242,6 @@ async function pagVerHistorico(){
           <td style="color:var(--muted)">${ri+1}</td>
           <td style="font-weight:700">${r.motoboy}</td>
           <td style="font-size:.75rem;color:var(--muted)">${empNames[r.empresa]||r.empresa}</td>
-          <td style="font-size:.75rem;color:var(--muted)">${r.data_referencia||'—'}</td>
           <td style="font-size:.75rem">${r.chave_pix||'—'}</td>
           <td style="text-align:right">${r.entregas}</td>
           <td style="text-align:right">R$ ${(r.valor_base||0).toFixed(2)}</td>
@@ -6236,7 +6251,7 @@ async function pagVerHistorico(){
         </tr>`;
       });
       html+=`<tr style="border-top:2px solid var(--border)">
-        <td colspan="9" style="font-weight:700">TOTAL GERAL</td>
+        <td colspan="8" style="font-weight:700">TOTAL GERAL</td>
         <td style="text-align:right;font-weight:800;color:var(--green);font-size:1.05rem">R$ ${g.total.toFixed(2)}</td>
       </tr></tbody></table></div>`;
     });
@@ -6283,7 +6298,8 @@ function pagAbrirCadastroPix(){
     </div>
     <div style="background:var(--card2);border-radius:9px;padding:14px;border:1px solid var(--border)">
       <p style="font-size:.75rem;color:var(--muted);margin-bottom:12px">
-        💡 Digite a chave PIX base de cada motoboy. Quando você salvar uma chave em um dia específico dentro de Pagamentos, esse histórico também fica disponível para consulta e reutilização por data.
+        💡 Digite a chave PIX de cada motoboy. Os dados são salvos automaticamente no navegador ao sair do campo.
+        Aparecerão automaticamente na linha do motoboy ao abrir Pagamentos.
       </p>
       <table style="width:100%;border-collapse:collapse">
         <thead><tr>
@@ -6716,14 +6732,7 @@ function pagAbrirCadastroPix(){
   const __origClearDate = clearDate;
   clearDate = function(){
     __origClearDate();
-    const now = new Date();
-    calYear = now.getFullYear();
-    calMonth = now.getMonth();
-    if(document.getElementById('pagamentos-overlay')?.classList.contains('show')){
-      syncPagFiltersFromDashboard(true);
-      pagRenderCal();
-      pagRender();
-    }
+    applyLatestMonthRangeFromData(true);
     render();
     renderCal();
   };
