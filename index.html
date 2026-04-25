@@ -6541,7 +6541,7 @@ function pagAbrirCadastroPix(){
   }
   function indexedRowLooksLikeMotoboys(row){
     if(!row || typeof row !== 'object') return false;
-    return ('mt' in row) || ('tr' in row) || ('ve' in row) || ('lj' in row) || ('lc' in row) || ('cs' in row) || ('br' in row) || ('ed' in row) || ('cv' in row);
+    return ('mt' in row) || ('tr' in row) || ('ve' in row) || ('lj' in row) || ('lc' in row) || ('cs' in row) || ('br' in row) || ('ed' in row) || ('cv' in row) || (('p' in row) && ('d' in row) && (('l' in row) || ('lj' in row)));
   }
   async function fetchIndexedCompanyMonths(companyKey){
     try{
@@ -6571,22 +6571,28 @@ function pagAbrirCadastroPix(){
         return;
       }
 
+      const hasExplicitMoto = ('mt' in row) || ('entregador' in row);
       let entregador = indexedText(row.mt || row.entregador);
       if(entregador){
         const s = entregador.trim();
         if(!s || s.toUpperCase() === 'N/A' || /^\d{8,}$/.test(s)) entregador = '';
         else entregador = s;
       }
+      const origemIndexadaSemMoto = !entregador && !hasExplicitMoto && ('p' in row) && ('d' in row);
       if(!entregador){
-        stats[dlKey].balcao++;
-        counters.balcao++;
-        return;
+        if(origemIndexadaSemMoto) entregador = `SEM MOTOBOY • ${lojaNomePre}`;
+        else {
+          stats[dlKey].balcao++;
+          counters.balcao++;
+          return;
+        }
       }
 
       if(!dataFmtPre){ counters.semDado++; return; }
       if(lojaNomePre === 'Desconhecida'){ counters.semDado++; return; }
 
-      const turno = normalizaTurno(row.tr || row.turno);
+      const turnoRaw = row.tr || row.turno || (origemIndexadaSemMoto ? 'Não informado' : '');
+      const turno = (turnoRaw ? normalizaTurno(turnoRaw) : '') || 'Não informado';
       const entregaVal = indexedNumber(row.e ?? row.valEntrega ?? row.entrega);
       const nomeUp = entregador.toUpperCase();
       const key = `${nomeUp}|${dataFmtPre}|${turno}|${lojaNomePre}`;
@@ -6774,25 +6780,6 @@ function pagAbrirCadastroPix(){
       let truncados = 0;
       let falhas = 0;
 
-      const indexedPacks = await Promise.all(INDEXED_COMPANY_KEYS.map(async companyKey => ({
-        companyKey,
-        months: await fetchIndexedCompanyMonths(companyKey)
-      })));
-
-      indexedPacks.forEach(pack => {
-        const monthEntries = Object.entries(pack.months || {}).sort((a,b) => a[0].localeCompare(b[0]));
-        if(monthEntries.length) indexedCompanies++;
-        monthEntries.forEach(([monthKey, payload]) => {
-          const rowsSrc = payload && payload.rows ? payload.rows : {};
-          const rows = Array.isArray(rowsSrc) ? rowsSrc : Object.values(rowsSrc || {});
-          if(!rows.length) return;
-          indexedMonths++;
-          indexedRows += rows.length;
-          totalLinhas += rows.length;
-          ingestIndexedRows(rows, map, detail, stats, counters, seenPedidos, `${pack.companyKey}_${monthKey}`);
-        });
-      });
-
       const reportsObj = await motoFetchJson(REPORTS_URL) || {};
       const reports = Object.entries(reportsObj).map(([id, value]) => ({ id, ...(value||{}) }))
         .filter(rep => rep && rep.status !== 'deletado' && rep.status !== 'substituido')
@@ -6819,6 +6806,25 @@ function pagAbrirCadastroPix(){
         }
         await motoYield();
       }
+
+      const indexedPacks = await Promise.all(INDEXED_COMPANY_KEYS.map(async companyKey => ({
+        companyKey,
+        months: await fetchIndexedCompanyMonths(companyKey)
+      })));
+
+      indexedPacks.forEach(pack => {
+        const monthEntries = Object.entries(pack.months || {}).sort((a,b) => a[0].localeCompare(b[0]));
+        if(monthEntries.length) indexedCompanies++;
+        monthEntries.forEach(([monthKey, payload]) => {
+          const rowsSrc = payload && payload.rows ? payload.rows : {};
+          const rows = Array.isArray(rowsSrc) ? rowsSrc : Object.values(rowsSrc || {});
+          if(!rows.length) return;
+          indexedMonths++;
+          indexedRows += rows.length;
+          totalLinhas += rows.length;
+          ingestIndexedRows(rows, map, detail, stats, counters, seenPedidos, `${pack.companyKey}_${monthKey}`);
+        });
+      });
 
       RAW = Object.values(map).sort((a,b) => dateToNum(a.data) - dateToNum(b.data));
       RAW_DETAIL = detail;
