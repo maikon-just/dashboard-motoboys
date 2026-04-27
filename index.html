@@ -7242,5 +7242,512 @@ function pagAbrirCadastroPix(){
   };
 })();
 </script>
+<script>
+(function(){
+  const FINANCE_STATIC_ROOT = 'https://maikon-just.github.io/resultados-operacionais/data/vendas-index';
+  const FINANCE_FB_ROOT = 'https://justburger-producao-e9b27-default-rtdb.firebaseio.com/vendas_indexadas';
+  const EMP_TO_STORES = {
+    burger: ['Burger Matriz','Burger ABC','Burger GRU'],
+    gourmet: ['Gourmet'],
+    forneria: ['Aham Forneria'],
+    sushi: ['Aham Sushi']
+  };
+  const LEGACY_KEYS = [
+    'motoboys_raw_v2','motoboys_raw_detail_v1','motoboys_stats_dl_v1','motoboys_cache_meta_v2',
+    'mpag_moto_extra_v2','mpag_extras_v2','moto_pix_v1','mpag_pix_v2','mpag_pix_history_v1'
+  ];
+  const fmtMoney = new Intl.NumberFormat('pt-BR',{ style:'currency', currency:'BRL' });
+  const fmtInt = new Intl.NumberFormat('pt-BR');
+  const financeStaticCache = new Map();
+  const financeFbCache = new Map();
+
+  function safeClearLegacyCache(){
+    try{ LEGACY_KEYS.forEach(k => localStorage.removeItem(k)); }catch(_e){}
+    try{ RAW = []; }catch(_e){}
+    try{ RAW_DETAIL = []; }catch(_e){}
+    try{ window._uploadStatsByDateLoja = {}; }catch(_e){}
+    try{ PAG_EMPS.forEach(emp => { PAG_DATA[emp] = {}; }); }catch(_e){}
+  }
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function ymd(d){ return d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate()); }
+  function brFromDate(d){ return pad2(d.getDate()) + '/' + pad2(d.getMonth()+1) + '/' + d.getFullYear(); }
+  function parseBrDate(s, endOfDay){
+    if(!s) return null;
+    const m = String(s).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if(!m) return null;
+    return new Date(m[3] + '-' + m[2] + '-' + m[1] + (endOfDay ? 'T23:59:59' : 'T00:00:00'));
+  }
+  function monthsBetween(from, to){
+    if(!from || !to) return [];
+    const out = [];
+    let y = from.getFullYear(), m = from.getMonth();
+    const ey = to.getFullYear(), em = to.getMonth();
+    while(y < ey || (y === ey && m <= em)){
+      out.push(y + '-' + pad2(m+1));
+      m++;
+      if(m > 11){ m = 0; y++; }
+    }
+    return out;
+  }
+  function parseAnyDate(raw){
+    if(!raw) return null;
+    if(raw instanceof Date) return isNaN(raw) ? null : raw;
+    const s = String(raw).trim();
+    if(!s) return null;
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(s) ? new Date(s + 'T12:00:00') : new Date(s);
+    return isNaN(d) ? null : d;
+  }
+  function normalizeFinanceRow(raw, fallbackStore){
+    const data = parseAnyDate((raw && (raw.d || raw.data)) || '');
+    if(!data) return null;
+    return {
+      pedido: String(raw && (raw.p || raw.pedido || '') || ''),
+      data,
+      loja: String(raw && (raw.l || raw.loja || fallbackStore || '') || ''),
+      itens: Number(raw && (raw.i || raw.itens || 0) || 0),
+      entrega: Number(raw && (raw.e || raw.entrega || 0) || 0),
+      desconto: Number(raw && (raw.dc || raw.desconto || 0) || 0),
+      acrescimo: Number(raw && (raw.a || raw.acrescimo || 0) || 0),
+      total: Number(raw && (raw.t || raw.total || 0) || 0),
+      cancelado: Boolean(raw && (raw.c || raw.cancelado)),
+      hasMotoboyFields: Boolean(raw && (raw.entregador || raw.motoboy || raw.turno || raw.valor_entregador || raw.valEnt))
+    };
+  }
+  function dedupeFinanceRows(rows){
+    const map = new Map();
+    (rows || []).forEach(r => {
+      if(!r || !r.data || isNaN(r.data)) return;
+      map.set((r.pedido || '') + '||' + (r.loja || '') + '||' + ymd(r.data), r);
+    });
+    return Array.from(map.values()).sort((a,b) => a.data - b.data || String(a.loja).localeCompare(String(b.loja), 'pt-BR'));
+  }
+  function fetchJsonCached(url, cacheMap){
+    if(cacheMap.has(url)) return cacheMap.get(url);
+    const p = fetch(url, { cache:'no-store' }).then(r => r.ok ? r.json() : null).catch(() => null);
+    cacheMap.set(url, p);
+    return p;
+  }
+  async function loadMonthStatic(mk){
+    const payload = await fetchJsonCached(FINANCE_STATIC_ROOT + '/months/' + mk + '.json', financeStaticCache);
+    const rawRows = payload && Array.isArray(payload.rows) ? payload.rows : [];
+    return rawRows.map(r => normalizeFinanceRow(r, '')).filter(Boolean);
+  }
+  async function loadMonthFirebase(mk){
+    const payload = await fetchJsonCached(FINANCE_FB_ROOT + '/months/' + mk + '.json', financeFbCache);
+    const rowsObj = payload && payload.rows ? payload.rows : {};
+    return Object.values(rowsObj).map(r => normalizeFinanceRow(r, '')).filter(Boolean);
+  }
+  function resolveFinanceStores(){
+    const selected = (window.PAG_FILTROS && PAG_FILTROS.emps && !PAG_FILTROS.emps.has('todas')) ? Array.from(PAG_FILTROS.emps) : ['burger','gourmet','forneria','sushi'];
+    const stores = [];
+    selected.forEach(emp => (EMP_TO_STORES[emp] || []).forEach(loja => stores.push(loja)));
+    return Array.from(new Set(stores));
+  }
+  function resolveFinanceRange(){
+    const dash = (typeof getDashboardDateBounds === 'function') ? getDashboardDateBounds() : { de:'', ate:'' };
+    const deBr = (window.PAG_FILTROS && PAG_FILTROS.de) || dash.de || fDataDe || '';
+    const ateBr = (window.PAG_FILTROS && PAG_FILTROS.ate) || dash.ate || fDataAte || deBr || '';
+    const from = parseBrDate(deBr, false);
+    const to = parseBrDate(ateBr || deBr, true);
+    return { from, to, deBr: deBr || (from ? brFromDate(from) : ''), ateBr: ateBr || (to ? brFromDate(to) : '') };
+  }
+  async function loadFinanceRowsForMirror(){
+    const range = resolveFinanceRange();
+    if(!range.from || !range.to) return { rows:[], range };
+    const months = monthsBetween(range.from, range.to);
+    let merged = [];
+    const packs = await Promise.all(months.map(async mk => {
+      const pair = await Promise.all([loadMonthStatic(mk), loadMonthFirebase(mk)]);
+      return pair[0].concat(pair[1]);
+    }));
+    packs.forEach(arr => { merged = merged.concat(arr); });
+    const stores = resolveFinanceStores();
+    merged = dedupeFinanceRows(merged).filter(r => !r.cancelado && r.data >= range.from && r.data <= range.to && (!stores.length || stores.includes(r.loja)));
+    return { rows: merged, range };
+  }
+  function financeDayLabel(iso){
+    const d = parseAnyDate(iso);
+    return d ? d.toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'numeric' }) : iso;
+  }
+  function renderFinanceMirror(payload){
+    const main = document.getElementById('pag-main');
+    if(!main) return;
+    const rows = (payload && payload.rows) ? payload.rows : [];
+    const range = payload && payload.range ? payload.range : resolveFinanceRange();
+    const byStore = new Map();
+    const byDay = new Map();
+    let totalPedidos = 0, totalEntrega = 0, totalFaturamento = 0, totalDesconto = 0;
+    let foundMotoboyFields = false;
+    rows.forEach(r => {
+      totalPedidos += 1;
+      totalEntrega += Number(r.entrega || 0);
+      totalFaturamento += Number(r.total || 0);
+      totalDesconto += Number(r.desconto || 0);
+      if(r.hasMotoboyFields) foundMotoboyFields = true;
+      const storeAgg = byStore.get(r.loja) || { loja:r.loja, pedidos:0, entrega:0, faturamento:0, desconto:0 };
+      storeAgg.pedidos += 1;
+      storeAgg.entrega += Number(r.entrega || 0);
+      storeAgg.faturamento += Number(r.total || 0);
+      storeAgg.desconto += Number(r.desconto || 0);
+      byStore.set(r.loja, storeAgg);
+      const dayKey = ymd(r.data);
+      const dayAgg = byDay.get(dayKey) || { data:dayKey, pedidos:0, entrega:0, faturamento:0, desconto:0 };
+      dayAgg.pedidos += 1;
+      dayAgg.entrega += Number(r.entrega || 0);
+      dayAgg.faturamento += Number(r.total || 0);
+      dayAgg.desconto += Number(r.desconto || 0);
+      byDay.set(dayKey, dayAgg);
+    });
+    const storeRows = Array.from(byStore.values()).sort((a,b) => b.pedidos - a.pedidos || String(a.loja).localeCompare(String(b.loja), 'pt-BR'));
+    const dayRows = Array.from(byDay.values()).sort((a,b) => String(a.data).localeCompare(String(b.data)));
+    const turnoAviso = (window.PAG_FILTROS && PAG_FILTROS.turno && PAG_FILTROS.turno !== 'todos')
+      ? '<div style="margin-top:8px;font-size:.78rem;color:#facc15">Filtro de turno ignorado nesta espelhagem porque a base indexada do financeiro não expõe hora/turno por pedido.</div>'
+      : '';
+    const motoboyAviso = foundMotoboyFields
+      ? ''
+      : '<div style="margin-top:8px;font-size:.78rem;color:#fca5a5">A base espelhada do financeiro não traz Entregador / Turno / Valor Entregador por pedido. Para não mostrar pagamento errado, o detalhamento individual de motoboys foi bloqueado nesta versão.</div>';
+    const emptyHtml = '<div class="pempty"><div class="pei">📭</div><p>Nenhum pedido encontrado na base indexada do dashboard financeiro para o período/empresa selecionados.</p></div>';
+    if(!rows.length){
+      main.innerHTML = '<div style="background:#2a1731;border:1px solid rgba(236,72,153,.28);color:#fbcfe8;padding:14px 16px;border-radius:14px;margin-bottom:14px"><b>Modo espelhado do dashboard financeiro</b><div style="margin-top:6px;font-size:.84rem;color:#f9a8d4">Código legado zerado localmente. Esta tela agora consulta apenas vendas_indexadas (mesma base do dashboard financeiro) e não lê relatorios_diarios.</div></div>' + emptyHtml;
+      return;
+    }
+    const storeTable = storeRows.map((r,i) => '<tr>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid var(--border);color:var(--muted)">' + (i+1) + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:700">' + r.loja + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid var(--border);text-align:right">' + fmtInt.format(r.pedidos) + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid var(--border);text-align:right;color:#facc15">' + fmtMoney.format(r.entrega) + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid var(--border);text-align:right;color:#55efc4">' + fmtMoney.format(r.faturamento) + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid var(--border);text-align:right;color:#fca5a5">' + fmtMoney.format(r.desconto) + '</td>' +
+    '</tr>').join('');
+    const dayTable = dayRows.map(r => '<tr>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid var(--border);font-weight:700">' + financeDayLabel(r.data) + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid var(--border);text-align:right">' + fmtInt.format(r.pedidos) + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid var(--border);text-align:right;color:#facc15">' + fmtMoney.format(r.entrega) + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid var(--border);text-align:right;color:#55efc4">' + fmtMoney.format(r.faturamento) + '</td>' +
+      '<td style="padding:10px 12px;border-bottom:1px solid var(--border);text-align:right;color:#fca5a5">' + fmtMoney.format(r.desconto) + '</td>' +
+    '</tr>').join('');
+    main.innerHTML = '' +
+      '<div style="background:#10223a;border:1px solid rgba(96,165,250,.28);color:#dbeafe;padding:14px 16px;border-radius:14px;margin-bottom:14px">' +
+        '<b>Modo espelhado do dashboard financeiro</b>' +
+        '<div style="margin-top:6px;font-size:.84rem;color:#bfdbfe">Código legado zerado localmente. Esta tela agora consulta apenas <b>vendas_indexadas</b>, exatamente a mesma raiz consumida pelo dashboard financeiro.</div>' +
+        '<div style="margin-top:8px;font-size:.78rem;color:#93c5fd">Período: ' + (range.deBr || '—') + ' até ' + (range.ateBr || '—') + '</div>' +
+        motoboyAviso + turnoAviso +
+      '</div>' +
+      '<div class="psum-cards">' +
+        '<div class="pscard"><div class="sv">' + fmtInt.format(totalPedidos) + '</div><div class="sl">Pedidos indexados</div></div>' +
+        '<div class="pscard gold"><div class="sv">' + fmtMoney.format(totalEntrega) + '</div><div class="sl">Taxa de entrega</div></div>' +
+        '<div class="pscard green"><div class="sv">' + fmtMoney.format(totalFaturamento) + '</div><div class="sl">Faturamento líquido</div></div>' +
+        '<div class="pscard"><div class="sv">' + fmtMoney.format(totalDesconto) + '</div><div class="sl">Desconto</div></div>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr;gap:16px">' +
+        '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px">' +
+          '<div style="font-weight:800;margin-bottom:10px">Resumo por loja</div>' +
+          '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr>' +
+            '<th style="padding:10px 12px;text-align:left;color:var(--muted);font-size:.75rem;border-bottom:1px solid var(--border)">#</th>' +
+            '<th style="padding:10px 12px;text-align:left;color:var(--muted);font-size:.75rem;border-bottom:1px solid var(--border)">Loja</th>' +
+            '<th style="padding:10px 12px;text-align:right;color:var(--muted);font-size:.75rem;border-bottom:1px solid var(--border)">Pedidos</th>' +
+            '<th style="padding:10px 12px;text-align:right;color:var(--muted);font-size:.75rem;border-bottom:1px solid var(--border)">Entrega</th>' +
+            '<th style="padding:10px 12px;text-align:right;color:var(--muted);font-size:.75rem;border-bottom:1px solid var(--border)">Faturamento</th>' +
+            '<th style="padding:10px 12px;text-align:right;color:var(--muted);font-size:.75rem;border-bottom:1px solid var(--border)">Desconto</th>' +
+          '</tr></thead><tbody>' + storeTable + '</tbody></table></div>' +
+        '</div>' +
+        '<div style="background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px">' +
+          '<div style="font-weight:800;margin-bottom:10px">Resumo diário</div>' +
+          '<div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr>' +
+            '<th style="padding:10px 12px;text-align:left;color:var(--muted);font-size:.75rem;border-bottom:1px solid var(--border)">Data</th>' +
+            '<th style="padding:10px 12px;text-align:right;color:var(--muted);font-size:.75rem;border-bottom:1px solid var(--border)">Pedidos</th>' +
+            '<th style="padding:10px 12px;text-align:right;color:var(--muted);font-size:.75rem;border-bottom:1px solid var(--border)">Entrega</th>' +
+            '<th style="padding:10px 12px;text-align:right;color:var(--muted);font-size:.75rem;border-bottom:1px solid var(--border)">Faturamento</th>' +
+            '<th style="padding:10px 12px;text-align:right;color:var(--muted);font-size:.75rem;border-bottom:1px solid var(--border)">Desconto</th>' +
+          '</tr></thead><tbody>' + dayTable + '</tbody></table></div>' +
+        '</div>' +
+      '</div>';
+  }
+  async function abrirPagamentosEspelhado(){
+    const overlay = document.getElementById('pagamentos-overlay');
+    if(!overlay) return;
+    overlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
+    if(typeof syncPagFiltersFromDashboard === 'function'){
+      try{ syncPagFiltersFromDashboard(true); }catch(_e){}
+    }
+    const main = document.getElementById('pag-main');
+    if(main) main.innerHTML = '<div class="pempty"><div class="pei">⏳</div><p>Lendo a mesma base indexada do dashboard financeiro…</p></div>';
+    const subEl = document.getElementById('headerSub');
+    if(subEl) subEl.textContent = 'Base financeira indexada (sem legado)';
+    try{
+      const payload = await loadFinanceRowsForMirror();
+      window.__financeMirrorPayload = payload;
+      renderFinanceMirror(payload);
+    }catch(err){
+      console.error(err);
+      if(main) main.innerHTML = '<div class="pempty"><div class="pei">⚠️</div><p>Falha ao espelhar a base indexada do dashboard financeiro.</p></div>';
+    }
+  }
+
+  safeClearLegacyCache();
+  window.loadMotoboysLegacyData = async function(){
+    safeClearLegacyCache();
+    const subEl = document.getElementById('headerSub');
+    if(subEl) subEl.textContent = 'Leitura legada desligada — usando apenas vendas_indexadas na tela de pagamentos';
+    return [];
+  };
+  window.clearAllData = function(){
+    safeClearLegacyCache();
+    if(window.__financeMirrorPayload) renderFinanceMirror(window.__financeMirrorPayload);
+    else if(typeof render === 'function') render();
+  };
+  window.abrirPagamentos = abrirPagamentosEspelhado;
+  window.pagRender = function(){
+    if(window.__financeMirrorPayload) renderFinanceMirror(window.__financeMirrorPayload);
+    else abrirPagamentosEspelhado();
+  };
+})();
+</script>
+
+<script>
+(function(){
+  const FINANCE_STATIC_ROOT = 'https://maikon-just.github.io/resultados-operacionais/data/vendas-index';
+  const FINANCE_FB_ROOT = 'https://justburger-producao-e9b27-default-rtdb.firebaseio.com/vendas_indexadas';
+  const RESET_KEYS = ['motoboys_raw_v2','motoboys_raw_detail_v1','motoboys_stats_dl_v1','motoboys_cache_meta_v2'];
+  const FINANCE_MODE_NAME = 'base indexada do dashboard financeiro';
+  const AVAILABLE_FROM = '2025-01';
+  let __patchedBannerDone = false;
+
+  function removeLegacyCaches(){
+    RESET_KEYS.forEach(k=>{ try{ localStorage.removeItem(k); }catch(e){} });
+  }
+  function setUploadStatus(msg){
+    const el = document.getElementById('uploadStatus');
+    if(el) el.textContent = msg || '';
+  }
+  function setHeaderSub(msg){
+    const el = document.getElementById('headerSub');
+    if(el) el.textContent = msg || '';
+  }
+  function ensureFinanceModeBanner(){
+    if(__patchedBannerDone) return;
+    const filterBar = document.querySelector('.filter-bar');
+    if(!filterBar) return;
+    const box = document.createElement('div');
+    box.id = 'finance-index-mode-banner';
+    box.style.cssText = 'margin:12px 28px 0;padding:12px 16px;border:1px solid #2f5b85;border-radius:12px;background:rgba(52,152,219,.10);color:#cfe8ff;font-size:.82rem;line-height:1.45';
+    box.innerHTML = '<b>🔄 Modo reconstruído</b> — esta versão zera caches antigos e lê somente a mesma base indexada do financeiro (<code>data/vendas-index</code> + <code>vendas_indexadas</code>). Como essa base não traz <b>entregador</b>, <b>turno</b> nem <b>valor_entregador</b>, a página agrupa por <b>empresa + dia</b> e mantém zerados os detalhes individuais indisponíveis.';
+    filterBar.insertAdjacentElement('afterend', box);
+    __patchedBannerDone = true;
+  }
+  function resetScreenOnly(){
+    try{ RAW = []; }catch(e){}
+    try{ RAW_DETAIL = []; }catch(e){}
+    window._uploadStatsByDateLoja = {};
+    if(typeof renderCal === 'function') renderCal();
+    if(typeof render === 'function') render();
+    if(typeof pagSyncFromRAW === 'function') pagSyncFromRAW();
+    if(typeof pagRender === 'function' && document.getElementById('pag-main')){
+      try{ pagRender(); }catch(e){}
+    }
+  }
+  function pad2(n){ return String(n).padStart(2,'0'); }
+  function isoToBr(iso){
+    if(!iso) return '';
+    const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : '';
+  }
+  function mkMonthList(){
+    const [sy, sm] = AVAILABLE_FROM.split('-').map(Number);
+    const start = new Date(sy, sm - 1, 1);
+    const now = new Date();
+    const list = [];
+    let y = start.getFullYear(), m = start.getMonth();
+    while(y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth())){
+      list.push(`${y}-${pad2(m+1)}`);
+      m++;
+      if(m > 11){ m = 0; y++; }
+    }
+    return list;
+  }
+  async function fetchJson(url){
+    try{
+      const r = await fetch(url, { cache:'no-store' });
+      if(!r.ok) return null;
+      return await r.json();
+    }catch(e){
+      return null;
+    }
+  }
+  function payloadRows(payload){
+    if(!payload) return [];
+    if(Array.isArray(payload.rows)) return payload.rows.slice();
+    if(payload.rows && typeof payload.rows === 'object') return Object.values(payload.rows);
+    return [];
+  }
+  function dedupeFinanceRows(rows){
+    const map = new Map();
+    (rows || []).forEach(raw => {
+      if(!raw) return;
+      const p = String(raw.p ?? raw.pedido ?? '').trim();
+      const d = String(raw.d ?? raw.data ?? '').trim().slice(0,10);
+      const l = String(raw.l ?? raw.loja ?? '').trim();
+      if(!p || !d || !l) return;
+      map.set(`${p}||${l}||${d}`, raw);
+    });
+    return [...map.values()].sort((a,b)=> String(a.d||a.data||'').localeCompare(String(b.d||b.data||'')) || String(a.l||a.loja||'').localeCompare(String(b.l||b.loja||'')) || String(a.p||a.pedido||'').localeCompare(String(b.p||b.pedido||'')));
+  }
+  function normEmpresa(loja){
+    const s = String(loja || '').trim();
+    if(/burger/i.test(s)) return 'Just Burger';
+    if(/gourmet/i.test(s)) return 'Gourmet';
+    if(/forneria/i.test(s)) return 'Aham Forneria';
+    if(/sushi/i.test(s)) return 'Aham Sushi';
+    return s || 'Desconhecida';
+  }
+  function syntheticNome(loja){
+    return `BASE INDEXADA ${String(loja || '').toUpperCase()}`;
+  }
+  async function loadMonthRows(mk){
+    const [staticPayload, fbPayload] = await Promise.all([
+      fetchJson(`${FINANCE_STATIC_ROOT}/months/${mk}.json`),
+      fetchJson(`${FINANCE_FB_ROOT}/months/${mk}.json`)
+    ]);
+    return dedupeFinanceRows([...payloadRows(staticPayload), ...payloadRows(fbPayload)]);
+  }
+  function financeRowsToDashboard(rows){
+    const map = {};
+    const detail = [];
+    const stats = {};
+    let ignoredCancelled = 0;
+    let usedRows = 0;
+
+    (rows || []).forEach(raw => {
+      const cancelado = Boolean(Number(raw.c ?? raw.cancelado ?? 0));
+      if(cancelado){ ignoredCancelled++; return; }
+      const iso = String(raw.d ?? raw.data ?? '').trim().slice(0,10);
+      const dataFmt = isoToBr(iso);
+      if(!dataFmt) return;
+      const loja = normEmpresa(raw.l ?? raw.loja ?? '');
+      if(loja === 'Desconhecida') return;
+      const turno = 'Não informado';
+      const nome = syntheticNome(loja);
+      const key = `${nome}|${dataFmt}|${turno}|${loja}`;
+      if(!map[key]){
+        map[key] = {
+          nome,
+          loja,
+          turno,
+          data: dataFmt,
+          dia_semana: typeof getDiaSemana === 'function' ? getDiaSemana(dataFmt) : '',
+          entregas: 0,
+          taxa_recebida: 0,
+          km_adic_8: 0,
+          km_adic_9: 0,
+          km_adic_12: 0,
+          km_adic_13: 0,
+          km_adic_22: 0
+        };
+      }
+      const entrega = Number(raw.e ?? raw.entrega ?? 0) || 0;
+      map[key].entregas += 1;
+      map[key].taxa_recebida += entrega;
+      const tRnd = Math.round(entrega);
+      if(tRnd === 8) map[key].km_adic_8 += 1;
+      else if(tRnd === 9) map[key].km_adic_9 += 1;
+      else if(tRnd === 12) map[key].km_adic_12 += 1;
+      else if(tRnd === 13) map[key].km_adic_13 += 1;
+      else if(tRnd === 22) map[key].km_adic_22 += 1;
+      const dlKey = `${dataFmt}|${loja}`;
+      if(!stats[dlKey]) stats[dlKey] = { cancelados:0, balcao:0 };
+      detail.push({
+        nome,
+        loja,
+        turno,
+        data: dataFmt,
+        consumidor: '',
+        bairro: '',
+        endereco: '',
+        canal: 'Base indexada financeira',
+        valEntrega: entrega,
+        valEnt: 0,
+        pedido: String(raw.p ?? raw.pedido ?? '').trim(),
+        totalPedido: Number(raw.t ?? raw.total ?? 0) || 0
+      });
+      usedRows++;
+    });
+
+    return {
+      raw: Object.values(map).sort((a,b)=> (typeof dateToNum === 'function' ? dateToNum(a.data) - dateToNum(b.data) : String(a.data).localeCompare(String(b.data))) || String(a.loja).localeCompare(String(b.loja))),
+      detail,
+      stats,
+      ignoredCancelled,
+      usedRows
+    };
+  }
+  async function loadIndexedFinanceData(opts={}){
+    if(window.__indexedFinanceLoading) return;
+    window.__indexedFinanceLoading = true;
+    ensureFinanceModeBanner();
+    removeLegacyCaches();
+    resetScreenOnly();
+    setHeaderSub('Reconstruindo o dashboard de motoboys a partir da base indexada do financeiro');
+    setUploadStatus('Lendo a base indexada do financeiro...');
+    try{
+      const months = mkMonthList();
+      const monthly = await Promise.all(months.map(loadMonthRows));
+      const deduped = dedupeFinanceRows(monthly.flat());
+      const built = financeRowsToDashboard(deduped);
+      RAW = built.raw;
+      RAW_DETAIL = built.detail;
+      window._uploadStatsByDateLoja = built.stats;
+      if(typeof reinitCal === 'function') reinitCal();
+      if(RAW.length && typeof applyLatestMonthRangeFromData === 'function') applyLatestMonthRangeFromData(false);
+      else if(typeof applyCurrentMonthRangeNow === 'function') applyCurrentMonthRangeNow(false);
+      if(typeof renderCal === 'function') renderCal();
+      if(typeof render === 'function') render();
+      if(typeof pagSyncFromRAW === 'function') pagSyncFromRAW();
+      if(typeof pagRender === 'function' && document.getElementById('pag-main')){
+        try{ pagRender(); }catch(e){}
+      }
+      const totalEnt = RAW.reduce((s,r)=>s + (r.entregas || 0), 0);
+      setUploadStatus(`${RAW.length.toLocaleString()} grupos · ${totalEnt.toLocaleString()} entregas · fonte: ${FINANCE_MODE_NAME}`);
+      showToastLines([
+        '✅ Dashboard zerado e reconstruído com a mesma base do financeiro.',
+        `${totalEnt.toLocaleString()} entregas válidas lidas da base indexada.`,
+        `${built.ignoredCancelled.toLocaleString()} linhas canceladas descartadas.`,
+        'ℹ️ A base financeira não fornece entregador, turno nem valor_entregador; por isso os agrupamentos individuais foram reiniciados em modo empresa + dia.'
+      ], 9000);
+    }catch(err){
+      console.error('[finance-mode-reset]', err);
+      setUploadStatus('Falha ao ler a base indexada do financeiro');
+      showToast('❌ Não foi possível reconstruir o dashboard usando a base indexada do financeiro.');
+      resetScreenOnly();
+    }finally{
+      window.__indexedFinanceLoading = false;
+    }
+  }
+
+  window.loadMotoboysLegacyData = loadIndexedFinanceData;
+  window.startMotoLoad = function(){ return loadIndexedFinanceData({force:true}); };
+  window.maybeReloadMotoData = function(){ return loadIndexedFinanceData({force:true}); };
+  window.clearAllData = function(){
+    removeLegacyCaches();
+    resetScreenOnly();
+    setUploadStatus('Dashboard zerado. Recarregue para buscar novamente a base indexada.');
+    showToast('🗑️ Dados exibidos limpos. Nenhum cache legado foi mantido.');
+  };
+  window.initData = function(){
+    removeLegacyCaches();
+    RAW = [];
+    RAW_DETAIL = [];
+    window._uploadStatsByDateLoja = {};
+  };
+
+  ensureFinanceModeBanner();
+  removeLegacyCaches();
+  resetScreenOnly();
+  setTimeout(()=>loadIndexedFinanceData({force:true}), 50);
+  setTimeout(()=>loadIndexedFinanceData({force:true}), 1800);
+  setTimeout(()=>loadIndexedFinanceData({force:true}), 4200);
+})();
+</script>
+
 </body>
 </html>
