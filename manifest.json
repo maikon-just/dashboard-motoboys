@@ -1,0 +1,261 @@
+{
+  "created_at": "2026-04-27T01:47:56.800423Z",
+  "bundle": "reindex-burger-mar-abr-2026-test",
+  "company_key": "burger-matriz",
+  "display_name": "Burger Matriz",
+  "motoboys_store_label": "Just Burger",
+  "source_store_name": "Just Burger Zona Leste",
+  "source_store_code": "8f8983b5-89d1-4a88-9e3a-88dc8c8d76de",
+  "months": {
+    "2026-03": {
+      "month": "2026-03",
+      "company_key": "burger-matriz",
+      "display_name": "Burger Matriz",
+      "motoboys_store_label": "Just Burger",
+      "row_count": 9403,
+      "valid_count": 9348,
+      "cancelled_count": 55,
+      "period_start": "2026-03-01T00:00",
+      "period_end": "2026-03-30T22:52",
+      "faturamento_total": 888215.07,
+      "entrega_total": 46906.51,
+      "valor_entregador_total": 55754.0,
+      "turnos": [
+        {
+          "turno": "Noite",
+          "count": 7545
+        },
+        {
+          "turno": "Tarde",
+          "count": 1792
+        },
+        {
+          "turno": "Madrugada",
+          "count": 11
+        }
+      ],
+      "top_entregadores": [
+        {
+          "entregador": "<vazio>",
+          "count": 390
+        },
+        {
+          "entregador": "AUGUSTO ROGERIO DA SILVA",
+          "count": 387
+        },
+        {
+          "entregador": "MARCOS DANIEL DIOS",
+          "count": 384
+        },
+        {
+          "entregador": "RODRIGO RIBEIRO",
+          "count": 380
+        },
+        {
+          "entregador": "GLEYSON TORRES DA MOTA",
+          "count": 377
+        },
+        {
+          "entregador": "VICTOR CEZAR BRAGA",
+          "count": 360
+        },
+        {
+          "entregador": "LEONARDO ARAUJO CESAR DO CARMO",
+          "count": 337
+        },
+        {
+          "entregador": "ENOK PEREIRA CARVALHO JUNIOR",
+          "count": 336
+        },
+        {
+          "entregador": "EMERSON EUGENIO DE PAULA JUNIOR",
+          "count": 291
+        },
+        {
+          "entregador": "RICHARD DA SILVA CASTELO BRANCO",
+          "count": 273
+        },
+        {
+          "entregador": "VICTOR DE OLIVEIRA ANDRE",
+          "count": 272
+        },
+        {
+          "entregador": "BRUNO BALDESSIN DA SILVA",
+          "count": 272
+        },
+        {
+          "entregador": "GABRIEL TORRES DA MOTA",
+          "count": 272
+        },
+        {
+          "entregador": "VINICIUS SINDOU",
+          "count": 264
+        },
+        {
+          "entregador": "GUSTAVO PEREIRA",
+          "count": 264
+        },
+        {
+          "entregador": "RENATO TOLENTINO PEREIRA",
+          "count": 262
+        },
+        {
+          "entregador": "LUIS SANTOS DA SILVEIRA",
+          "count": 231
+        },
+        {
+          "entregador": "JOÃO VICTOR DOS SANTOS",
+          "count": 224
+        },
+        {
+          "entregador": "VINICIUS CAVENAGO FERREIRA",
+          "count": 222
+        },
+        {
+          "entregador": "VICENTE DE AUGUSTO DE LIMA",
+          "count": 210
+        }
+      ]
+    },
+    "2026-04": {
+      "month": "2026-04",
+      "company_key": "burger-matriz",
+      "display_name": "Burger Matriz",
+      "motoboys_store_label": "Just Burger",
+      "row_count": 6255,
+      "valid_count": 6212,
+      "cancelled_count": 43,
+      "period_start": "2026-04-01T11:12",
+      "period_end": "2026-04-17T23:56",
+      "faturamento_total": 548981.17,
+      "entrega_total": 25424.49,
+      "valor_entregador_total": 37262.0,
+      "turnos": [
+        {
+          "turno": "Noite",
+          "count": 4753
+        },
+        {
+          "turno": "Tarde",
+          "count": 1457
+        },
+        {
+          "turno": "Madrugada",
+          "count": 2
+        }
+      ],
+      "top_entregadores": [
+        {
+          "entregador": "11 GLEYSON TORRES DA MOTA",
+          "count": 279
+        },
+        {
+          "entregador": "21 MARCOS DANIEL DIOS",
+          "count": 273
+        },
+        {
+          "entregador": "25 OTAVIO AUGUSTO RODRIGUES DA SILVA",
+          "count": 261
+        },
+        {
+          "entregador": "2 AUGUSTO ROGERIO DA SILVA",
+          "count": 245
+        },
+        {
+          "entregador": "<vazio>",
+          "count": 244
+        },
+        {
+          "entregador": "7 ENOK PEREIRA CARVALHO JUNIOR",
+          "count": 239
+        },
+        {
+          "entregador": "31 VICTOR DE OLIVEIRA ANDRE",
+          "count": 238
+        },
+        {
+          "entregador": "13 GUSTAVO PEREIRA",
+          "count": 226
+        },
+        {
+          "entregador": "33 VINICIUS SINDOU",
+          "count": 215
+        },
+        {
+          "entregador": "10 GABRIEL TORRES DA MOTA",
+          "count": 215
+        },
+        {
+          "entregador": "30 VICTOR CEZAR BRAGA",
+          "count": 214
+        },
+        {
+          "entregador": "18 LUCAS TOLENTINO PEREIRA",
+          "count": 208
+        },
+        {
+          "entregador": "17 LEONARDO ARAUJO CESAR DO CARMO",
+          "count": 196
+        },
+        {
+          "entregador": "34 VINICIUS SOARES NUNES",
+          "count": 188
+        },
+        {
+          "entregador": "32 VINICIUS CAVENAGO FERREIRA",
+          "count": 185
+        },
+        {
+          "entregador": "6 EMERSON EUGENIO DE PAULA JUNIOR",
+          "count": 178
+        },
+        {
+          "entregador": "26 RENATO TOLENTINO PEREIRA",
+          "count": 162
+        },
+        {
+          "entregador": "28 RODRIGO RIBEIRO",
+          "count": 156
+        },
+        {
+          "entregador": "3 BRUNO BALDESSIN DA SILVA",
+          "count": 151
+        },
+        {
+          "entregador": "27 RICHARD DA SILVA CASTELO BRANCO",
+          "count": 150
+        }
+      ]
+    }
+  },
+  "source_files": [
+    {
+      "file_name": "JUST BURGER MARCO.xlsx",
+      "rows_total": 9405,
+      "rows_accepted": 9405,
+      "rows_cancelled": 55,
+      "rows_duplicate": 2,
+      "rows_rejected_other_store": 0,
+      "rows_rejected_wrong_month": 0,
+      "other_store_samples": {}
+    },
+    {
+      "file_name": "matriz ABRIL PARCIAL 2025.xlsx",
+      "rows_total": 6256,
+      "rows_accepted": 6255,
+      "rows_cancelled": 43,
+      "rows_duplicate": 0,
+      "rows_rejected_other_store": 1,
+      "rows_rejected_wrong_month": 0,
+      "other_store_samples": {
+        "Just Chicken Frango no Pote": 1
+      }
+    }
+  ],
+  "notes": [
+    "Base de teste contendo somente março/2026 e abril/2026 parcial.",
+    "Os campos financeiros e operacionais foram indexados juntos para atender financeiro e motoboys/pagamentos.",
+    "A página de motoboys desta pasta usa a lógica original de motoboy/dia/turno/pagamentos, mas lendo apenas esta base local enriquecida.",
+    "A página financeira desta pasta também lê somente estes dois meses locais."
+  ]
+}

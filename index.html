@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+<script>(function(){try{['motoboys_raw_v2','motoboys_raw_detail_v1','motoboys_stats_dl_v1','motoboys_cache_meta_v2','motoboys_pay_config_v3'].forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});}catch(_e){}window.__FORCE_LOCAL_ONLY__=true;window.__DISABLE_FB_LEGACY__=true;window.__DISABLE_AUTO_PAYMENTS_OPEN__=true;var _origFetch=window.fetch?window.fetch.bind(window):null;window.fetch=function(input,init){try{var u=(typeof input==='string')?input:(input&&input.url)||'';if(/firebaseio\.com|relatorios_diarios|justburger-producao/i.test(u)){return Promise.resolve(new Response(JSON.stringify({}),{status:200,headers:{'Content-Type':'application/json'}}));}}catch(_e){}return _origFetch?_origFetch(input,init):Promise.reject(new Error('fetch indisponível'));};})();</script>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
@@ -6990,37 +6992,45 @@ function pagAbrirCadastroPix(){
 })();
 </script>
 
-
-<script>
-(function(){
+<script>(function(){
   const LOCAL_MONTHS = ['2026-03','2026-04'];
   const DEFAULT_DE = '01/03/2026';
   const DEFAULT_ATE = '17/04/2026';
   const LOCAL_LABEL = 'Just Burger';
-  const HEADER_TEXT = 'Base local enriquecida — teste Burger março + abril/2026';
-  const LEGACY_KEYS = ['motoboys_raw_v2','motoboys_raw_detail_v1','motoboys_stats_dl_v1','motoboys_cache_meta_v2'];
-  function clearLocalMotoCaches(){
+  const SOURCE_STORE_NAME = 'Just Burger Zona Leste';
+  const HEADER_INIT = 'Carregando base local enriquecida (mar/abr 2026)…';
+  const LEGACY_KEYS = ['motoboys_raw_v2','motoboys_raw_detail_v1','motoboys_stats_dl_v1','motoboys_cache_meta_v2','motoboys_pay_config_v3'];
+  function clearAllLegacy(){
     try{ LEGACY_KEYS.forEach(k=>localStorage.removeItem(k)); }catch(e){}
     try{ window._uploadStatsByDateLoja = {}; }catch(e){}
+    try{ if(typeof RAW!=='undefined') RAW = []; }catch(e){}
+    try{ if(typeof RAW_DETAIL!=='undefined') RAW_DETAIL = []; }catch(e){}
+    if(window.PAG_DATA){ Object.keys(window.PAG_DATA).forEach(k=>{ window.PAG_DATA[k]={}; }); }
   }
   function fmtBrDateTime(iso){
     if(!iso) return '';
     const s=String(iso).trim().replace('T',' ');
-    const m=s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    let m=s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
     if(m) return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
-    const m2=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if(m2) return `${m2[3]}/${m2[2]}/${m2[1]} 00:00`;
+    m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(m) return `${m[3]}/${m[2]}/${m[1]} 00:00`;
     return s;
   }
   async function fetchLocalRows(){
-    const packs = await Promise.all(LOCAL_MONTHS.map(m => fetch(`./data/vendas-index/months/${m}.json`, {cache:'no-store'}).then(r => { if(!r.ok) throw new Error('Falha ao ler '+m); return r.json(); })));
-    return packs.flatMap(p => Array.isArray(p.rows) ? p.rows : []);
+    const out = [];
+    for(const m of LOCAL_MONTHS){
+      const r = await fetch('./data/vendas-index/months/' + m + '.json', { cache:'no-store' });
+      if(!r.ok) throw new Error('Falha ao ler base local ' + m + ' (HTTP ' + r.status + ')');
+      const j = await r.json();
+      if(j && Array.isArray(j.rows)) out.push.apply(out, j.rows);
+    }
+    return out;
   }
-  function rowsToLegacyLike(enrichedRows){
-    return enrichedRows.map(r => ({
+  function rowsToLegacyLike(rows){
+    return rows.map(r => ({
       'Pedido': r.p || '',
       'Código da loja': r.codigo_loja || '',
-      'Nome da loja': r.loja_original || 'Just Burger Zona Leste',
+      'Nome da loja': r.loja_original || SOURCE_STORE_NAME,
       'Tipo do pedido': r.tipo_pedido || 'D',
       'Turno': r.turno || '',
       'Canal de venda': r.canal_venda || '',
@@ -7042,97 +7052,89 @@ function pagAbrirCadastroPix(){
       'Motivo de acréscimo': r.motivo_acrescimo || '',
       'Desconto': Number(r.dc || 0),
       'Motivo do desconto': r.motivo_desconto || '',
-      'Total': Number(r.t || 0),
-      'Endereço': r.endereco || ''
+      'Total': Number(r.t || 0)
     }));
   }
-  function setDefaultFilters(){
+  function applyDefaultFilters(){
     try{
-      fLojas = new Set([LOCAL_LABEL]);
-      fLoja = LOCAL_LABEL;
-      fTurno = '';
-      fNome = '';
-      fDataDe = DEFAULT_DE;
-      fDataAte = DEFAULT_ATE;
-      const cfgEmpresa = document.getElementById('cfgEmpresa');
-      if(cfgEmpresa && !Array.from(cfgEmpresa.options).some(o=>o.value===LOCAL_LABEL)){
-        const opt = document.createElement('option'); opt.value = LOCAL_LABEL; opt.textContent = '🍔 ' + LOCAL_LABEL; cfgEmpresa.appendChild(opt);
+      if(typeof fLojas !== 'undefined'){ fLojas = new Set([LOCAL_LABEL]); fLoja = LOCAL_LABEL; }
+      if(typeof fTurno !== 'undefined') fTurno = '';
+      if(typeof fNome !== 'undefined') fNome = '';
+      if(typeof fDataDe !== 'undefined') fDataDe = DEFAULT_DE;
+      if(typeof fDataAte !== 'undefined') fDataAte = DEFAULT_ATE;
+      const cfgEmp = document.getElementById('cfgEmpresa');
+      if(cfgEmp){
+        if(!Array.from(cfgEmp.options).some(o=>o.value===LOCAL_LABEL)){
+          const opt = document.createElement('option'); opt.value=LOCAL_LABEL; opt.textContent='🍔 ' + LOCAL_LABEL; cfgEmp.appendChild(opt);
+        }
+        cfgEmp.value = LOCAL_LABEL;
       }
-      if(cfgEmpresa) cfgEmpresa.value = LOCAL_LABEL;
       document.querySelectorAll('.btn-filter[data-filter="loja"]').forEach(btn => btn.classList.toggle('active', btn.dataset.val===LOCAL_LABEL));
       document.querySelectorAll('.btn-filter[data-filter="turno"]').forEach(btn => btn.classList.remove('active'));
       const deInput = document.getElementById('dateDe'); if(deInput) deInput.value = DEFAULT_DE;
       const ateInput = document.getElementById('dateAte'); if(ateInput) ateInput.value = DEFAULT_ATE;
       const search = document.getElementById('searchName'); if(search) search.value = '';
-      if(window.PAG_FILTROS){
-        PAG_FILTROS.emps = new Set(['burger']);
-        PAG_FILTROS.turno = 'todos';
-        PAG_FILTROS.de = DEFAULT_DE;
-        PAG_FILTROS.ate = DEFAULT_ATE;
-        PAG_FILTROS.nome = '';
-      }
-    }catch(e){ console.error('Falha ao aplicar filtros padrão', e); }
+      if(window.PAG_FILTROS){ PAG_FILTROS.emps = new Set(['burger']); PAG_FILTROS.turno='todos'; PAG_FILTROS.de=DEFAULT_DE; PAG_FILTROS.ate=DEFAULT_ATE; PAG_FILTROS.nome=''; }
+    }catch(e){ console.error('falha ao aplicar filtros padrão', e); }
   }
   function decorateUi(){
-    const sub = document.getElementById('headerSub'); if(sub) sub.textContent = HEADER_TEXT;
-    document.querySelectorAll('.btn-upload').forEach((el)=>el.style.display='none');
+    const sub = document.getElementById('headerSub'); if(sub) sub.textContent = HEADER_INIT;
+    document.querySelectorAll('.btn-upload').forEach(el=>el.style.display='none');
     const drop = document.getElementById('uploadDrop'); if(drop) drop.style.display='none';
     const modal = document.getElementById('uploadModal'); if(modal) modal.classList.remove('show');
-    const payBtn = Array.from(document.querySelectorAll('button')).find(b => /pagamentos/i.test(b.textContent||''));
-    if(payBtn) payBtn.style.display='inline-flex';
+    const inp = document.getElementById('uploadInput'); if(inp) inp.remove();
   }
-  window.loadMotoboysLegacyData = async function(opts={}){
+  function showFatalEmpty(message){
+    const c = document.getElementById('cardsContainer');
+    if(c) c.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:32px;color:#fca5a5"><div style="font-size:3rem">📂</div><div style="font-size:1rem;margin-top:8px;color:#fff">Base local não encontrada</div><div style="font-size:.85rem;margin-top:6px;color:#fbcfe8">' + (message||'') + '</div><div style="font-size:.78rem;margin-top:10px;color:#94a3b8">Esperado: ./data/vendas-index/months/2026-03.json e ./data/vendas-index/months/2026-04.json</div></div>';
+    try{ document.getElementById('tableBody').innerHTML=''; }catch(e){}
+    try{ document.getElementById('tableHead').innerHTML=''; }catch(e){}
+  }
+  async function loadLocalAndRender(){
     if(window.__motoLoading) return;
     window.__motoLoading = true;
-    const silent = !!(opts && opts.silent);
-    const statusEl = document.getElementById('uploadStatus');
-    const subEl = document.getElementById('headerSub');
+    const sub = document.getElementById('headerSub');
     try{
-      clearLocalMotoCaches();
+      clearAllLegacy();
       decorateUi();
-      if(statusEl){ statusEl.style.display='none'; statusEl.textContent=''; }
-      if(subEl) subEl.textContent = 'Lendo base local enriquecida de motoboys (março + abril/2026)';
       const enriched = await fetchLocalRows();
       const legacyRows = rowsToLegacyLike(enriched);
-      const map = {};
-      const detail = [];
-      const stats = {};
-      const counters = { cancelados:0, balcao:0, semDado:0 };
-      const seenPedidos = new Set();
-      ingestMotoRows(legacyRows, map, detail, stats, counters, seenPedidos, 'local_bundle');
-      RAW = Object.values(map).sort((a,b) => dateToNum(a.data) - dateToNum(b.data));
+      const map={}, detail=[], stats={}, counters={cancelados:0,balcao:0,semDado:0}, seen=new Set();
+      if(typeof ingestMotoRows !== 'function') throw new Error('ingestMotoRows ausente');
+      ingestMotoRows(legacyRows, map, detail, stats, counters, seen, 'local_bundle_marabr_2026');
+      RAW = Object.values(map).sort((a,b)=>dateToNum(a.data)-dateToNum(b.data));
       RAW_DETAIL = detail;
       window._uploadStatsByDateLoja = {};
-      Object.entries(stats).forEach(([k,v]) => { if(k !== '__sem_data__') window._uploadStatsByDateLoja[k] = { cancelados:v.cancelados||0, balcao:v.balcao||0 }; });
-      try{ localStorage.setItem('motoboys_raw_v2', JSON.stringify(RAW)); }catch(e){}
-      try{ localStorage.setItem('motoboys_raw_detail_v1', JSON.stringify(RAW_DETAIL)); }catch(e){}
-      try{ localStorage.setItem('motoboys_stats_dl_v1', JSON.stringify(window._uploadStatsByDateLoja)); }catch(e){}
-      if(window.PAG_EMP_LOJA) window.PAG_EMP_LOJA['Burger Matriz'] = 'burger';
+      Object.entries(stats).forEach(([k,v])=>{ if(k!=='__sem_data__') window._uploadStatsByDateLoja[k] = { cancelados:v.cancelados||0, balcao:v.balcao||0 }; });
+      if(window.PAG_EMP_LOJA){ window.PAG_EMP_LOJA[LOCAL_LABEL]='burger'; window.PAG_EMP_LOJA['Burger Matriz']='burger'; }
       if(window.PAY_CONFIG && PAY_CONFIG['Just Burger'] && !PAY_CONFIG['Burger Matriz']) PAY_CONFIG['Burger Matriz'] = Object.assign({}, PAY_CONFIG['Just Burger']);
-      invalidatePagCache();
-      setDefaultFilters();
-      reinitCal();
-      render();
-      ensureQuickPaymentButtons();
-      renderCal();
-      try{ await ensurePagDataReady(true); }catch(e){ console.warn('Falha ao preparar pagamentos', e); }
-      const entregas = RAW.reduce((s,r)=>s+(Number(r.entregas)||0),0);
-      if(subEl) subEl.textContent = `${entregas.toLocaleString('pt-BR')} entregas válidas lidas da base enriquecida local • março/2026 + abril/2026 parcial`;
-      if(!silent && typeof motoToast === 'function') motoToast(`✅ Dashboard carregado com ${entregas.toLocaleString('pt-BR')} entregas na base local enriquecida.`, 4200);
-      return RAW;
+      if(typeof invalidatePagCache==='function') invalidatePagCache();
+      applyDefaultFilters();
+      if(typeof reinitCal==='function') reinitCal();
+      if(typeof render==='function') render();
+      if(typeof ensureQuickPaymentButtons==='function') ensureQuickPaymentButtons();
+      if(typeof renderCal==='function') renderCal();
+      try{ if(typeof ensurePagDataReady==='function') await ensurePagDataReady(true); }catch(e){ console.warn('pag ready falhou', e); }
+      const entregas = (RAW||[]).reduce((s,r)=>s+(Number(r.entregas)||0),0);
+      if(sub) sub.textContent = entregas.toLocaleString('pt-BR') + ' entregas válidas — base local enriquecida (mar/abr 2026)';
+      if(typeof motoToast==='function') motoToast('✅ Base local enriquecida carregada (' + entregas.toLocaleString('pt-BR') + ' entregas).', 4200);
     }catch(err){
       console.error(err);
-      if(subEl) subEl.textContent = 'Falha ao ler base local enriquecida';
-      if(typeof motoToast === 'function' && !silent) motoToast('❌ Falha ao carregar a base local enriquecida.', 5200);
-      throw err;
+      if(sub) sub.textContent = 'Falha ao carregar base local enriquecida';
+      showFatalEmpty(String((err && err.message) || err));
+      if(typeof motoToast==='function') motoToast('❌ ' + ((err && err.message) || 'Falha ao ler base local'), 6000);
     }finally{
       window.__motoLoading = false;
     }
-  };
-  window.clearAllData = function(){ clearLocalMotoCaches(); loadMotoboysLegacyData({force:true,silent:false}).catch(console.error); };
-  decorateUi();
-})();
-</script>
-
+  }
+  // override de TUDO que pode buscar base legada
+  window.loadMotoboysLegacyData = function(){ return loadLocalAndRender(); };
+  window.loadFromFirebaseMotoboys = function(){ return loadLocalAndRender(); };
+  window.maybeReloadMotoData = function(){ /* desativado */ };
+  window.clearAllData = function(){ clearAllLegacy(); loadLocalAndRender(); };
+  function bootstrap(){ decorateUi(); clearAllLegacy(); loadLocalAndRender(); }
+  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', ()=>requestAnimationFrame(bootstrap), { once:true }); }
+  else{ requestAnimationFrame(bootstrap); }
+})();</script>
 </body>
 </html>

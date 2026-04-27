@@ -1,0 +1,26 @@
+[
+  {
+    "source_file": "JUST BURGER MARCO.xlsx",
+    "pedido": "118",
+    "data_venda": "2026-03-10T22:37",
+    "nome_loja": "Just Burger Zona Leste",
+    "codigo_loja": "8f8983b5-89d1-4a88-9e3a-88dc8c8d76de",
+    "motivo": "duplicado_pedido_loja_data"
+  },
+  {
+    "source_file": "JUST BURGER MARCO.xlsx",
+    "pedido": "119",
+    "data_venda": "2026-03-10T22:39",
+    "nome_loja": "Just Burger Zona Leste",
+    "codigo_loja": "8f8983b5-89d1-4a88-9e3a-88dc8c8d76de",
+    "motivo": "duplicado_pedido_loja_data"
+  },
+  {
+    "source_file": "matriz ABRIL PARCIAL 2025.xlsx",
+    "pedido": "557",
+    "data_venda": "2026-04-05T04:43",
+    "nome_loja": "Just Chicken Frango no Pote",
+    "codigo_loja": "4b595d93-b867-4951-a532-8a13046fb844",
+    "motivo": "loja_fora_do_lote_burger"
+  }
+]
