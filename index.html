@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
+<script>window.__FORCE_FINANCE_ONLY__=true;window.__DISABLE_AUTO_PAYMENTS_OPEN__=true;</script>
+
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
@@ -2405,7 +2407,7 @@ if(RAW.length){
 }
 renderCal();
 render();
-setTimeout(()=>{ try{ ensurePagDataReady(false); }catch(e){} }, 0);
+setTimeout(()=>{ try{ const ov=document.getElementById('pagamentos-overlay'); if(ov && ov.classList.contains('show')) ensurePagDataReady(false); }catch(e){} }, 0);
 
 function adjustStickyCards(){
   const hdr = document.querySelector('header');
@@ -6831,6 +6833,13 @@ function pagAbrirCadastroPix(){
     }
   }
   async function loadMotoboysLegacyData(opts={}){
+    if(window.__FORCE_FINANCE_ONLY__){
+      const statusEl = document.getElementById('uploadStatus');
+      const subEl = document.getElementById('headerSub');
+      if(statusEl){ statusEl.textContent=''; statusEl.style.display='none'; }
+      if(subEl) subEl.textContent = 'Busca legada bloqueada — usando apenas a base indexada do financeiro';
+      return [];
+    }
     const { silent=false, force=false } = opts || {};
     if(window.__motoLoading) return;
     const statusEl = document.getElementById('uploadStatus');
@@ -7022,6 +7031,7 @@ function pagAbrirCadastroPix(){
   let __motoAutoReloadLock = false;
   let __motoLastAutoReloadAt = 0;
   function maybeReloadMotoData(){
+    if(window.__FORCE_FINANCE_ONLY__) return;
     const now = Date.now();
     if(window.__motoLoading || __motoAutoReloadLock) return;
     if(now - __motoLastAutoReloadAt < 20000) return;
@@ -7032,6 +7042,7 @@ function pagAbrirCadastroPix(){
       .finally(()=>{ __motoAutoReloadLock = false; });
   }
   function startMotoLoad(){
+    if(window.__FORCE_FINANCE_ONLY__) return;
     if(window.__motoInitialLoadStarted) return;
     window.__motoInitialLoadStarted = true;
     setTimeout(() => loadMotoboysLegacyData({ force:false, silent:true }), 60);
@@ -7746,6 +7757,17 @@ function pagAbrirCadastroPix(){
   setTimeout(()=>loadIndexedFinanceData({force:true}), 50);
   setTimeout(()=>loadIndexedFinanceData({force:true}), 1800);
   setTimeout(()=>loadIndexedFinanceData({force:true}), 4200);
+})();
+</script>
+
+
+<script>
+(function(){
+  document.addEventListener('DOMContentLoaded', function(){
+    const ov = document.getElementById('pagamentos-overlay');
+    if(ov) ov.classList.remove('show');
+    document.body.style.overflow='';
+  }, { once:true });
 })();
 </script>
 
