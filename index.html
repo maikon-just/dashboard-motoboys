@@ -411,7 +411,7 @@
 <header>
   <div>
     <h1>🏍️ Dashboard Eficiência de Motoboys</h1>
-    <div class="sub" id="headerPeriod">Março 2026 · 6 Empresas</div>
+    <div class="sub" id="headerPeriod">Março 2026 · 4 Empresas</div>
   </div>
   <div class="header-upload">
     <div class="upload-status" id="uploadStatus" style="display:none"></div>
@@ -427,9 +427,7 @@
     <label>🏪 Empresa</label>
     <div class="btn-group">
       <button class="btn-filter" data-filter="loja" data-val="todas">Todas</button>
-      <button class="btn-filter" data-filter="loja" data-val="Burger Matriz">🍔 Burger Matriz</button>
-      <button class="btn-filter" data-filter="loja" data-val="Burger ABC">🍔 Burger ABC</button>
-      <button class="btn-filter" data-filter="loja" data-val="Burger GRU">🍔 Burger GRU</button>
+      <button class="btn-filter" data-filter="loja" data-val="Just Burger">🍔 Burger</button>
       <button class="btn-filter gourmet" data-filter="loja" data-val="Gourmet">🍽️ Gourmet</button>
       <button class="btn-filter forneria" data-filter="loja" data-val="Aham Forneria">🍕 Forneria</button>
       <button class="btn-filter sushi" data-filter="loja" data-val="Aham Sushi">🍣 Sushi</button>
@@ -505,9 +503,7 @@
       <label>Empresa</label>
       <select id="cfgEmpresa" class="pay-select">
         <option value="todas">Todas as empresas</option>
-        <option value="Burger Matriz">🍔 Burger Matriz</option>
-        <option value="Burger ABC">🍔 Burger ABC</option>
-        <option value="Burger GRU">🍔 Burger GRU</option>
+        <option value="Just Burger">🍔 Just Burger</option>
         <option value="Gourmet">🍽️ Gourmet</option>
         <option value="Aham Forneria">🍕 Aham Forneria</option>
         <option value="Aham Sushi">🍣 Aham Sushi</option>
@@ -999,8 +995,6 @@ function selectDate(dd){
   renderCal();
 }
 function renderCal(){
-  const refCal = fDataAte || fDataDe;
-  if(refCal){ const ref = parseDate(refCal); calYear = ref.y; calMonth = ref.m; }
   const months=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
   document.getElementById('calMonthLabel').textContent = months[calMonth] + ' ' + calYear;
   const grid = document.getElementById('calGrid');
@@ -1558,7 +1552,7 @@ function render(){
   });
 
   // Cards por empresa (linha 2)
-  const empresas = ['Burger Matriz','Burger ABC','Burger GRU','Gourmet','Aham Forneria','Aham Sushi'];
+  const empresas = ['Just Burger','Gourmet','Aham Forneria','Aham Sushi'];
   const empCards = empresas.map(e => {
     if(fLojas.size && !fLojas.has('todas') && !fLojas.has(e)) return '';
     const cnt = data.filter(r=>r.loja===e).reduce((s,r)=>s+r.entregas,0);
@@ -1643,7 +1637,7 @@ function render(){
   }
 
   // ── CHART POR EMPRESA ──
-  const empNomes = ['Burger Matriz','Burger ABC','Burger GRU','Gourmet','Aham Forneria','Aham Sushi'];
+  const empNomes = ['Just Burger','Gourmet','Aham Forneria','Aham Sushi'];
   const empTotals = empNomes.map(e => data.filter(r=>r.loja===e).reduce((s,r)=>s+r.entregas,0));
   mkChart('chartEmpresa',{
     type:'doughnut',
@@ -1981,19 +1975,13 @@ function normalizaTurno(t){
 
 // Mapeamento de códigos de loja para empresas
 const LOJA_MAP = {
-  '21870': 'Burger Matriz',
-  '8f8983b5-89d1-4a88-9e3a-88dc8c8d76de': 'Burger Matriz',
+  '21870': 'Just Burger',   // Delivery Direto Just Burger
+  '8f8983b5-89d1-4a88-9e3a-88dc8c8d76de': 'Just Burger',
   'b7ef408a-49bd-46a6-aa5a-e091dfe64fdb': 'Gourmet',
   '53551890-f285-4bb3-bcb5-d5cd645550a6': 'Aham Forneria',
   '184af09d-8d79-469f-a5f0-d3b228534c7e': 'Aham Sushi',
-  'burger matriz': 'Burger Matriz',
-  'just burger matriz': 'Burger Matriz',
-  'just burger': 'Burger Matriz',
-  'just burger zona leste': 'Burger Matriz',
-  'burger abc': 'Burger ABC',
-  'just burger abc': 'Burger ABC',
-  'burger gru': 'Burger GRU',
-  'just burger gru': 'Burger GRU',
+  'just burger': 'Just Burger',
+  'just burger zona leste': 'Just Burger',
   'gourmet': 'Gourmet',
   'just gourmet': 'Gourmet',
   'just gourmet comida brasileira feijoada': 'Gourmet',
@@ -2019,9 +2007,7 @@ function normalizaEmpresa(nomeLoja, codigoLoja){
   for(const [k,v] of Object.entries(LOJA_MAP)){
     if(s.includes(k)) return v;
   }
-  if(s.includes('burger abc')) return 'Burger ABC';
-  if(s.includes('burger gru')) return 'Burger GRU';
-  if(s.includes('burger')) return 'Burger Matriz';
+  if(s.includes('burger')) return 'Just Burger';
   return String(nomeLoja).trim() || 'Desconhecida';
 }
 
@@ -2065,9 +2051,7 @@ if(_uploadInputChangeEl){
 
 // Mapeamento lojaNome (da aba eficiência) → chave PEMPS (da aba pagamentos)
 const _LOJA_TO_EMP = {
-  'burger matriz':'burger_matriz', 'just burger matriz':'burger_matriz', 'just burger':'burger_matriz', 'burger':'burger_matriz', 'just burger zona leste':'burger_matriz',
-  'burger abc':'burger_abc', 'just burger abc':'burger_abc',
-  'burger gru':'burger_gru', 'just burger gru':'burger_gru',
+  'just burger':'burger', 'burger':'burger', 'just burger zona leste':'burger',
   'gourmet':'gourmet', 'just gourmet':'gourmet', 'just gourmet comida brasileira feijoada':'gourmet',
   'aham forneria':'forneria', 'forneria':'forneria', 'aham pizza forneria':'forneria', 'esfiha':'forneria', 'aham esfiha':'forneria',
   'aham sushi':'sushi', 'sushi':'sushi'
@@ -2100,7 +2084,7 @@ function processUploadFiles(files){
         if(empKey) window._syncPagamentosFiles.push({emp:empKey, file});
         else {
           // fallback: tenta todas as empresas (processa em todas)
-          ['burger_matriz','burger_abc','burger_gru','gourmet','forneria','sushi'].forEach(e=>
+          ['burger','gourmet','forneria','sushi'].forEach(e=>
             window._syncPagamentosFiles.push({emp:e, file})
           );
         }
@@ -2476,12 +2460,10 @@ window.addEventListener('resize', adjustPagStickyBars);
       <label>Empresa</label>
       <div class="pbtn-group" id="pag-emp-btns">
         <button class="pbf active" data-emp="todas" onclick="pagSelEmp('todas',this)">Todas</button>
-        <button class="pbf pburger"   data-emp="burger_matriz" onclick="pagSelEmp('burger_matriz',this)">🍔 Burger Matriz</button>
-        <button class="pbf pburger"   data-emp="burger_abc"    onclick="pagSelEmp('burger_abc',this)">🍔 Burger ABC</button>
-        <button class="pbf pburger"   data-emp="burger_gru"    onclick="pagSelEmp('burger_gru',this)">🍔 Burger GRU</button>
-        <button class="pbf pgourmet"  data-emp="gourmet"       onclick="pagSelEmp('gourmet',this)">🍽️ Gourmet</button>
-        <button class="pbf pforneria" data-emp="forneria"      onclick="pagSelEmp('forneria',this)">🍕 Forneria</button>
-        <button class="pbf psushi"    data-emp="sushi"         onclick="pagSelEmp('sushi',this)">🍣 Sushi</button>
+        <button class="pbf pburger"   data-emp="burger"   onclick="pagSelEmp('burger',this)">🍔 Burger</button>
+        <button class="pbf pgourmet"  data-emp="gourmet"  onclick="pagSelEmp('gourmet',this)">🍽️ Gourmet</button>
+        <button class="pbf pforneria" data-emp="forneria" onclick="pagSelEmp('forneria',this)">🍕 Forneria</button>
+        <button class="pbf psushi"    data-emp="sushi"    onclick="pagSelEmp('sushi',this)">🍣 Sushi</button>
       </div>
     </div>
     <div class="pfg">
@@ -2543,13 +2525,13 @@ window.addEventListener('resize', adjustPagStickyBars);
 <script>
 // módulo pagamentos removido — funções stub para compatibilidade
 const PEMPS=['burger','gourmet','forneria','sushi'];
-const PEMP_LABEL={burger_matriz:'🍔 Burger Matriz',burger_abc:'🍔 Burger ABC',burger_gru:'🍔 Burger GRU',gourmet:'🍽️ Gourmet',forneria:'🍕 Forneria',sushi:'🍣 Sushi'};
-const PEMP_COLOR={burger_matriz:'#4a90e2',burger_abc:'#2563eb',burger_gru:'#1d4ed8',gourmet:'#9b59b6',forneria:'#e67e22',sushi:'#16a085'};
-const PDATA={burger_matriz:{},burger_abc:{},burger_gru:{},gourmet:{},forneria:{},sushi:{}};
-const PFILES={burger_matriz:[],burger_abc:[],burger_gru:[],gourmet:[],forneria:[],sushi:[]};
+const PEMP_LABEL={burger:'🍔 Just Burger',gourmet:'🍽️ Gourmet',forneria:'🍕 Forneria',sushi:'🍣 Sushi'};
+const PEMP_COLOR={burger:'#4a90e2',gourmet:'#9b59b6',forneria:'#e67e22',sushi:'#16a085'};
+const PDATA={burger:{},gourmet:{},forneria:{},sushi:{}};
+const PFILES={burger:[],gourmet:[],forneria:[],sushi:[]};
 // ── FUNÇÕES STUB (módulo completo em pagamentos.html) ──────
-const PFILTROS={burger_matriz:{turno:'todos',de:'',ate:''},burger_abc:{turno:'todos',de:'',ate:''},burger_gru:{turno:'todos',de:'',ate:''},gourmet:{turno:'todos',de:'',ate:''},forneria:{turno:'todos',de:'',ate:''},sushi:{turno:'todos',de:'',ate:''}};
-const PTAXA={burger_matriz:6,burger_abc:6,burger_gru:6,gourmet:6,forneria:6,sushi:6};
+const PFILTROS={burger:{turno:'todos',de:'',ate:''},gourmet:{turno:'todos',de:'',ate:''},forneria:{turno:'todos',de:'',ate:''},sushi:{turno:'todos',de:'',ate:''}};
+const PTAXA={burger:6,gourmet:6,forneria:6,sushi:6};
 let PMOTO_EXTRA={};try{PMOTO_EXTRA=JSON.parse(localStorage.getItem('mpag_moto_extra_v2')||'{}');}catch(e){}
 const PRESUMO_FILTROS={turno:'todos',de:'',ate:''};
 let pPixMap={};
@@ -4382,7 +4364,7 @@ function pGerarResumo(){
   fDataAte = _ate;
   fTurno   = _turno === 'todos' ? '' : _turno;
   // Empresas: usa pResumoSel convertida para lojas
-  const empToLoja = {burger_matriz:'Burger Matriz', burger_abc:'Burger ABC', burger_gru:'Burger GRU', gourmet:'Gourmet', forneria:'Aham Forneria', sushi:'Aham Sushi'};
+  const empToLoja = {burger:'Just Burger', gourmet:'Gourmet', forneria:'Aham Forneria', sushi:'Aham Sushi'};
   const lojasSel = [...pResumoSel].map(e=>empToLoja[e]).filter(Boolean);
   if(lojasSel.length > 0){
     fLojas = new Set(lojasSel);
@@ -4850,7 +4832,7 @@ function pExportarResumoExcel(){
   if(!trs.length){ showToast('⚠️ Gere o resumo antes de exportar.'); return; }
 
   // Nomes das empresas para cabeçalho
-  const empNames={burger_matriz:'Burger Matriz',burger_abc:'Burger ABC',burger_gru:'Burger GRU',gourmet:'Gourmet',forneria:'Aham Forneria',sushi:'Aham Sushi'};
+  const empNames={burger:'Just Burger',gourmet:'Gourmet',forneria:'Aham Forneria',sushi:'Aham Sushi'};
   const empKeys=[...pResumoSel];
   const deN=pDateNum(PRESUMO_FILTROS.de), ateN=pDateNum(PRESUMO_FILTROS.ate);
   const turnoFilt=PRESUMO_FILTROS.turno||'todos';
@@ -4909,14 +4891,14 @@ function pExportarResumoExcel(){
 // ═══════════════════════════════════════════════════════════════
 // MÓDULO PAGAMENTOS — embutido no index
 // ═══════════════════════════════════════════════════════════════
-const PAG_EMPS      = ['burger_matriz','burger_abc','burger_gru','gourmet','forneria','sushi'];
-const PAG_EMP_LABEL = {burger_matriz:'🍔 Burger Matriz',burger_abc:'🍔 Burger ABC',burger_gru:'🍔 Burger GRU',gourmet:'🍽️ Gourmet',forneria:'🍕 Forneria',sushi:'🍣 Sushi'};
-const PAG_EMP_LOJA  = {'Burger Matriz':'burger_matriz','Burger ABC':'burger_abc','Burger GRU':'burger_gru','Gourmet':'gourmet','Aham Forneria':'forneria','Aham Sushi':'sushi'};
-const PAG_EMP_COLOR = {burger_matriz:'#4a90e2',burger_abc:'#2563eb',burger_gru:'#1d4ed8',gourmet:'#9b59b6',forneria:'#e67e22',sushi:'#16a085'};
+const PAG_EMPS      = ['burger','gourmet','forneria','sushi'];
+const PAG_EMP_LABEL = {burger:'🍔 Just Burger',gourmet:'🍽️ Gourmet',forneria:'🍕 Forneria',sushi:'🍣 Sushi'};
+const PAG_EMP_LOJA  = {'Just Burger':'burger','Gourmet':'gourmet','Aham Forneria':'forneria','Aham Sushi':'sushi'};
+const PAG_EMP_COLOR = {burger:'#4a90e2',gourmet:'#9b59b6',forneria:'#e67e22',sushi:'#16a085'};
 const PAG_DIAS_PT   = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const PAG_DIAS_FULL = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta-feira','Sexta-feira','Sábado'];
 
-const PAG_DATA    = {burger_matriz:{},burger_abc:{},burger_gru:{},gourmet:{},forneria:{},sushi:{}};
+const PAG_DATA    = {burger:{},gourmet:{},forneria:{},sushi:{}};
 const PAG_FILTROS = {emps:new Set(['todas']),turno:'todos',de:'',ate:'',nome:''};
 let pagPixMap    = {};
 let pagPixHistoryMap = {};
@@ -5137,8 +5119,6 @@ function pagCalPrev(){pagCalMonth--;if(pagCalMonth<1){pagCalMonth=12;pagCalYear-
 function pagCalNext(){pagCalMonth++;if(pagCalMonth>12){pagCalMonth=1;pagCalYear++;}pagRenderCal();}
 
 function pagRenderCal(){
-  const refPagCal = PAG_FILTROS.ate || PAG_FILTROS.de;
-  if(refPagCal){ const ref = parseDate(refPagCal); pagCalYear = ref.y; pagCalMonth = ref.m + 1; }
   const lbl=document.getElementById('pcal-month-lbl');
   const grid=document.getElementById('pcal-grid');
   if(!lbl||!grid) return;
@@ -5467,6 +5447,104 @@ function pagBuildDashboardAlignedDayMap(dt){
   return map;
 }
 
+function pagGetDashboardAlignedContext(){
+  const savedDe = fDataDe;
+  const savedAte = fDataAte;
+  const savedTurno = fTurno;
+  const savedNome = fNome;
+  const savedLojas = (typeof fLojas !== 'undefined' && fLojas instanceof Set) ? new Set([...fLojas]) : new Set(['todas']);
+  const empToLoja = {burger:'Just Burger', gourmet:'Gourmet', forneria:'Aham Forneria', sushi:'Aham Sushi'};
+  try{
+    fDataDe = PAG_FILTROS.de || '';
+    fDataAte = PAG_FILTROS.ate || '';
+    fTurno = (PAG_FILTROS.turno && PAG_FILTROS.turno !== 'todos') ? PAG_FILTROS.turno : '';
+    fNome = String(PAG_FILTROS.nome || '').trim();
+    const lojasSel = PAG_FILTROS.emps.has('todas') ? ['todas'] : [...PAG_FILTROS.emps].map(emp => empToLoja[emp]).filter(Boolean);
+    fLojas = new Set(lojasSel.length ? lojasSel : ['todas']);
+
+    const allDates = getAllDates();
+    const bounds = getDashboardDateBounds();
+    const de = dateToNum(bounds.de);
+    const ate = dateToNum(bounds.ate);
+    const activeDates = allDates.filter(d => {
+      const n = dateToNum(d);
+      return (!de || n >= de) && (!ate || n <= ate);
+    });
+    const data = filtered();
+    const piv = pivot(data, activeDates);
+
+    let confirmados = 0;
+    RAW.forEach(r => {
+      if(!isNomeEspecial(r.nome)) return;
+      if(!lojaMatch(r.loja)) return;
+      if(fTurno && r.turno !== fTurno) return;
+      const dn = dateToNum(r.data);
+      if(de && dn < de) return;
+      if(ate && dn > ate) return;
+      confirmados += r.entregas || 0;
+    });
+
+    let cancelados = 0, balcao = 0;
+    if(window._uploadStatsByDateLoja){
+      Object.entries(window._uploadStatsByDateLoja).forEach(([key, val]) => {
+        const [dataKey, lojaKey] = key.split('|');
+        if(!lojaMatch(lojaKey)) return;
+        const dn = dateToNum(dataKey);
+        if(de && dn < de) return;
+        if(ate && dn > ate) return;
+        cancelados += val.cancelados || 0;
+        balcao += val.balcao || 0;
+      });
+    }
+
+    const companyTotals = {burger:0, gourmet:0, forneria:0, sushi:0};
+    const companyMotoCounts = {burger:0, gourmet:0, forneria:0, sushi:0};
+    const companyPayTotals = {burger:0, gourmet:0, forneria:0, sushi:0};
+    Object.entries(empToLoja).forEach(([emp, loja]) => {
+      const empData = data.filter(r => r.loja === loja);
+      const empPiv = pivot(empData, activeDates);
+      companyTotals[emp] = empData.reduce((s, r) => s + (r.entregas || 0), 0);
+      companyMotoCounts[emp] = empPiv.filter(m => (m.total || 0) > 0).length;
+      companyPayTotals[emp] = empPiv.reduce((s, m) => {
+        const lojaBase = (m.loja || loja).split('+')[0] || loja;
+        return s + calcPagamento(m, lojaBase) + calcKmAdic(m, lojaBase) + calcMinimo10(m, lojaBase) + calcTxTrans(m, lojaBase) + (getPayConfig(lojaBase).chuva ? 10 : 0);
+      }, 0);
+    });
+
+    const totalEntregas = data.reduce((s, r) => s + (r.entregas || 0), 0);
+    const totalTaxaRecebida = data.reduce((s, r) => s + (r.taxa_recebida || 0), 0);
+    const totalGarantido = piv.reduce((s, m) => s + calcMinimo10(m, (m.loja || '').split('+')[0] || 'todas'), 0);
+    const totalAPagar = piv.reduce((s, m) => {
+      const lojaBase = (m.loja || '').split('+')[0] || 'todas';
+      return s + calcPagamento(m, lojaBase) + calcKmAdic(m, lojaBase) + calcMinimo10(m, lojaBase) + calcTxTrans(m, lojaBase) + (getPayConfig(lojaBase).chuva ? 10 : 0);
+    }, 0);
+
+    const perDay = {};
+    activeDates.forEach(dt => {
+      const rowsDia = data.filter(r => r.data === dt);
+      const pivDia = pivot(rowsDia, [dt]);
+      const totalPagarDia = pivDia.reduce((s, m) => {
+        const lojaBase = (m.loja || '').split('+')[0] || 'todas';
+        return s + calcPagamento(m, lojaBase) + calcKmAdic(m, lojaBase) + calcMinimo10(m, lojaBase) + calcTxTrans(m, lojaBase) + (getPayConfig(lojaBase).chuva ? 10 : 0);
+      }, 0);
+      perDay[dt] = {
+        entregas: rowsDia.reduce((s, r) => s + (r.entregas || 0), 0),
+        taxa: rowsDia.reduce((s, r) => s + (r.taxa_recebida || 0), 0),
+        pagar: totalPagarDia,
+        motoboys: pivDia.filter(m => (m.total || 0) > 0).length
+      };
+    });
+
+    return { activeDates, data, piv, confirmados, cancelados, balcao, companyTotals, companyMotoCounts, companyPayTotals, totalEntregas, totalTaxaRecebida, totalGarantido, totalAPagar, perDay };
+  } finally {
+    fDataDe = savedDe;
+    fDataAte = savedAte;
+    fTurno = savedTurno;
+    fNome = savedNome;
+    fLojas = savedLojas;
+  }
+}
+
 // Render
 function pagRender(){
   const main=document.getElementById('pag-main');
@@ -5495,13 +5573,15 @@ function pagRender(){
     diasSet.add(dt);
   })));
 
-  // Status chips
+  const dashCtx = pagGetDashboardAlignedContext();
+
+  // Status chips alinhados com o dashboard principal
   let html='<div class="pstatus-row">';
   ef.forEach(emp=>{
-    const n=Object.keys(PAG_DATA[emp]).length;
-    if(n>0){
-      const te=Object.values(PAG_DATA[emp]).reduce((s,m)=>s+Object.values(m.dias).reduce((ss,d)=>ss+d.qtd,0),0);
-      const tv=Object.values(PAG_DATA[emp]).reduce((s,m)=>s+Object.values(m.dias).reduce((ss,d)=>ss+d.totalValEnt,0),0);
+    const te = dashCtx.companyTotals[emp] || 0;
+    const n = dashCtx.companyMotoCounts[emp] || 0;
+    const tv = dashCtx.companyPayTotals[emp] || 0;
+    if(te>0 || n>0 || tv>0){
       html+=`<span class="chip">${PAG_EMP_LABEL[emp]}: ${n} motoboys · ${te} ent · <b>R$ ${tv.toFixed(2)}</b></span>`;
     }
   });
@@ -5579,31 +5659,21 @@ function pagRender(){
       return;
     }
 
-    // Totais gerais
-    let gtotalQtd=0,gtotalValEnt=0,gtotalEntrega=0,gtotalExtras=0,gtotalGarantido=0;
-    diasFiltrados.forEach(dt=>diasPivot[dt].forEach(g=>{
-      g.emps.forEach(ie=>{
-        gtotalQtd+=ie.d.qtd;
-        gtotalValEnt+=ie.d.totalValEnt;
-        gtotalEntrega+=ie.d.totalEntrega;
-        gtotalExtras+=ie.extra+ie.chuvaVal;
-        gtotalGarantido+=(ie.d.garantido||0);
-      });
-    }));
+    // Totais gerais alinhados com o dashboard principal
     html+=`<div class="psum-cards">
       <div class="pscard"><div class="sv">${diasFiltrados.length}</div><div class="sl">Dias</div></div>
-      <div class="pscard"><div class="sv">${gtotalQtd}</div><div class="sl">Entregas</div></div>
-      <div class="pscard gold"><div class="sv">R$ ${gtotalEntrega.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
-      ${gtotalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${gtotalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
-      <div class="pscard green"><div class="sv">R$ ${(gtotalValEnt+gtotalExtras).toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
+      <div class="pscard"><div class="sv">${dashCtx.totalEntregas}</div><div class="sl">Entregas</div></div>
+      <div class="pscard gold"><div class="sv">R$ ${dashCtx.totalTaxaRecebida.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
+      ${dashCtx.totalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${dashCtx.totalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
+      <div class="pscard green"><div class="sv">R$ ${dashCtx.totalAPagar.toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
     </div>`;
 
     diasFiltrados.forEach((dt,dIdx)=>{
       const dayLabel=pagFormatDiaLabel(dt);
       const dowAbrev=PAG_DIAS_PT[pagDiaSemana(dt)];
       const grupos=diasPivot[dt];
-      const diaQtd=grupos.reduce((s,g)=>s+g.totalQtd,0);
-      const diaVal=grupos.reduce((s,g)=>s+g.totalValEnt,0);
+      const diaQtd=(dashCtx.perDay[dt]&&dashCtx.perDay[dt].entregas)||grupos.reduce((s,g)=>s+g.totalQtd,0);
+      const diaVal=(dashCtx.perDay[dt]&&dashCtx.perDay[dt].pagar)||grupos.reduce((s,g)=>s+g.totalValEnt,0);
       html+=`<div class="pdia-bloco" id="pdia-${dIdx}">
         <div class="pdia-header" onclick="pagToggleDia(${dIdx})">
           <span class="pdia-toggle open" id="pdtog-${dIdx}">▼</span>
@@ -5666,31 +5736,21 @@ function pagRender(){
       return;
     }
 
-    // Totais gerais
-    let gtotalQtd=0,gtotalValEnt=0,gtotalEntrega=0,gtotalExtras=0,gtotalGarantido=0;
-    diasFiltrados.forEach(dt=>diasPivot[dt].forEach(g=>{
-      g.emps.forEach(ie=>{
-        gtotalQtd+=ie.d.qtd;
-        gtotalValEnt+=ie.d.totalValEnt;
-        gtotalEntrega+=ie.d.totalEntrega;
-        gtotalExtras+=ie.extra+ie.chuvaVal;
-        gtotalGarantido+=(ie.d.garantido||0);
-      });
-    }));
+    // Totais gerais alinhados com o dashboard principal
     html+=`<div class="psum-cards">
       <div class="pscard"><div class="sv">${diasFiltrados.length}</div><div class="sl">Dias</div></div>
-      <div class="pscard"><div class="sv">${gtotalQtd}</div><div class="sl">Entregas</div></div>
-      <div class="pscard gold"><div class="sv">R$ ${gtotalEntrega.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
-      ${gtotalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${gtotalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
-      <div class="pscard green"><div class="sv">R$ ${(gtotalValEnt+gtotalExtras).toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
+      <div class="pscard"><div class="sv">${dashCtx.totalEntregas}</div><div class="sl">Entregas</div></div>
+      <div class="pscard gold"><div class="sv">R$ ${dashCtx.totalTaxaRecebida.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
+      ${dashCtx.totalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${dashCtx.totalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
+      <div class="pscard green"><div class="sv">R$ ${dashCtx.totalAPagar.toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
     </div>`;
 
     diasFiltrados.forEach((dt,dIdx)=>{
       const dowAbrev=PAG_DIAS_PT[pagDiaSemana(dt)];
       const dayLabel=pagFormatDiaLabel(dt);
       const grupos=diasPivot[dt];
-      const diaQtd=grupos.reduce((s,g)=>s+g.totalQtd,0);
-      const diaVal=grupos.reduce((s,g)=>s+g.totalValEnt,0);
+      const diaQtd=(dashCtx.perDay[dt]&&dashCtx.perDay[dt].entregas)||grupos.reduce((s,g)=>s+g.totalQtd,0);
+      const diaVal=(dashCtx.perDay[dt]&&dashCtx.perDay[dt].pagar)||grupos.reduce((s,g)=>s+g.totalValEnt,0);
       html+=`<div class="pdia-bloco" id="pdia-${dIdx}">
         <div class="pdia-header" onclick="pagToggleDia(${dIdx})">
           <span class="pdia-toggle open" id="pdtog-${dIdx}">▼</span>
@@ -5862,7 +5922,7 @@ function pagGerarResumo(){
     return;
   }
   const deN=pagDateNum(PAG_FILTROS.de), ateN=pagDateNum(PAG_FILTROS.ate);
-  const empNames={burger_matriz:'Burger Matriz',burger_abc:'Burger ABC',burger_gru:'Burger GRU',gourmet:'Gourmet',forneria:'Aham Forneria',sushi:'Aham Sushi'};
+  const empNames={burger:'Just Burger',gourmet:'Gourmet',forneria:'Aham Forneria',sushi:'Aham Sushi'};
   const empColors={burger:'#4a90e2',gourmet:'#9b59b6',forneria:'#e67e22',sushi:'#16a085'};
   // consolidado: gKey → { nome, nn, porEmp, total, totalEntrega, qtd }
   // gKey = número de cadastro ou nome normalizado (mesma lógica do pagRender)
@@ -5944,7 +6004,7 @@ function pagGerarResumo(){
 function pagResumoFinanceiro(){
   const ef=PAG_FILTROS.emps.has('todas')?PAG_EMPS:[...PAG_FILTROS.emps];
   const deN=pagDateNum(PAG_FILTROS.de), ateN=pagDateNum(PAG_FILTROS.ate);
-  const empNames={burger_matriz:'Burger Matriz',burger_abc:'Burger ABC',burger_gru:'Burger GRU',gourmet:'Gourmet',forneria:'Aham Forneria',sushi:'Aham Sushi'};
+  const empNames={burger:'Just Burger',gourmet:'Gourmet',forneria:'Aham Forneria',sushi:'Aham Sushi'};
   const empColors={burger:'#4a90e2',gourmet:'#9b59b6',forneria:'#e67e22',sushi:'#16a085'};
 
   // Agrega por empresa e por dia
@@ -6093,7 +6153,7 @@ function pagResumoFinanceiro(){
 function pagExportarExcel(){
   const ef=PAG_FILTROS.emps.has('todas')?PAG_EMPS:[...PAG_FILTROS.emps];
   const deN=pagDateNum(PAG_FILTROS.de), ateN=pagDateNum(PAG_FILTROS.ate);
-  const empNames={burger_matriz:'Burger Matriz',burger_abc:'Burger ABC',burger_gru:'Burger GRU',gourmet:'Gourmet',forneria:'Aham Forneria',sushi:'Aham Sushi'};
+  const empNames={burger:'Just Burger',gourmet:'Gourmet',forneria:'Aham Forneria',sushi:'Aham Sushi'};
   // consolidado: gKey → { nome, nn, pix, porEmp:{empKey→val}, total, qtd }
   // gKey = número de cadastro ou nome normalizado (mesma lógica do pagRender)
   const consolidado={};
@@ -6243,7 +6303,7 @@ async function pagVerHistorico(){
         </div>`;
       return;
     }
-    const empNames={burger_matriz:'Burger Matriz',burger_abc:'Burger ABC',burger_gru:'Burger GRU',gourmet:'Gourmet',forneria:'Aham Forneria',sushi:'Aham Sushi'};
+    const empNames={burger:'Just Burger',gourmet:'Gourmet',forneria:'Aham Forneria',sushi:'Aham Sushi'};
     // Agrupa por data de referência
     const porData={};
     rows.forEach(r=>{
@@ -6992,6 +7052,198 @@ function pagAbrirCadastroPix(){
 })();
 </script>
 
+<script>
+(function(){
+  function pagEmpToLojaLabel(emp){
+    for(const [loja,key] of Object.entries(PAG_EMP_LOJA||{})) if(key===emp) return loja;
+    return '';
+  }
+  function pagSelectedEmps(){
+    return (PAG_FILTROS && PAG_FILTROS.emps && !PAG_FILTROS.emps.has('todas')) ? [...PAG_FILTROS.emps] : (Array.isArray(PAG_EMPS) ? PAG_EMPS.slice() : []);
+  }
+  function pagWithDashboardScope(run){
+    const saved={
+      de:fDataDe, ate:fDataAte, turno:fTurno, nome:fNome,
+      lojas:(typeof fLojas!=='undefined' && fLojas instanceof Set) ? new Set(fLojas) : new Set(['todas'])
+    };
+    try{
+      const emps=pagSelectedEmps();
+      const lojas=emps.map(pagEmpToLojaLabel).filter(Boolean);
+      fDataDe=PAG_FILTROS.de||'';
+      fDataAte=PAG_FILTROS.ate||'';
+      fTurno=(PAG_FILTROS.turno&&PAG_FILTROS.turno!=='todos')?PAG_FILTROS.turno:'';
+      fNome=String(PAG_FILTROS.nome||'').trim();
+      fLojas=(lojas.length && lojas.length < PAG_EMPS.length) ? new Set(lojas) : new Set(['todas']);
+      return run({emps,lojas});
+    }finally{
+      fDataDe=saved.de; fDataAte=saved.ate; fTurno=saved.turno; fNome=saved.nome; fLojas=saved.lojas;
+    }
+  }
+  function pagCalcPivotTotalAPagar(piv){
+    return (piv||[]).reduce((s,m)=>{
+      const lojaMain=(m.loja||'').split('+')[0]||'Just Burger';
+      return s
+        + (calcPagamento(m,lojaMain)||0)
+        + (calcKmAdic(m)||0)
+        + (calcMinimo10(m,lojaMain)||0)
+        + (calcTxTrans(m,lojaMain)||0)
+        + ((getPayConfig(lojaMain).chuva)?10:0);
+    },0);
+  }
+  function pagCollectEntriesForDay(dt, ef, filtroNome){
+    const out=[];
+    ef.forEach(emp=>Object.values(PAG_DATA[emp]||{}).forEach(m=>{
+      if(!m || !m.dias || !m.dias[dt]) return;
+      const d=m.dias[dt];
+      if(PAG_FILTROS.turno!=='todos'){
+        const turnos=(d.turnos?[...d.turnos]:[d.turno||'Noite']);
+        if(!turnos.includes(PAG_FILTROS.turno)) return;
+      }
+      const nn=pagNomeNorm(m.nome);
+      if(filtroNome && !nn.includes(filtroNome)) return;
+      out.push({emp,m,d,nn,num:pagNumCadastro(m.nome)});
+    }));
+    return out;
+  }
+  function pagFallbackGroupMeta(g){
+    return {
+      nome:g.nome,
+      totalQtd:g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0),
+      valorEntrega:g.emps.reduce((s,ie)=>s+(ie.d.totalValEnt||0),0),
+      kmAdic:0,
+      garantido:0,
+      txTrans:0,
+      chuvaCfg:0,
+      totalAligned:g.emps.reduce((s,ie)=>s+(ie.d.totalValEnt||0),0)
+    };
+  }
+  function pagBuildGroupsForDay(dt, ef, filtroNome){
+    const entradas=pagCollectEntriesForDay(dt, ef, filtroNome);
+    if(!entradas.length) return [];
+    const modoMulti=(ef||[]).length>1;
+    const dashMap=pagBuildDashboardAlignedDayMap(dt)||{};
+    let grupos=[];
+    if(modoMulti){
+      const nomesSemCadastro=[...new Set(entradas.filter(x=>!x.num).map(x=>x.nn))];
+      const mapaFuzzy=nomesSemCadastro.length && typeof construirGruposNomes==='function'
+        ? construirGruposNomes(nomesSemCadastro)
+        : Object.fromEntries(nomesSemCadastro.map(nn=>[nn,nn]));
+      const grupoMap={};
+      entradas.forEach(({emp,m,d,nn,num})=>{
+        const repNome=num ? nn : (mapaFuzzy[nn]||nn);
+        const gKey=num ? `NUM:${num}` : `NOME:${repNome}`;
+        if(!grupoMap[gKey]) grupoMap[gKey]={nome:m.nome,gKey,emps:[],turnos:new Set(),totalQtd:0,totalValEnt:0};
+        if(m.nome.length>grupoMap[gKey].nome.length) grupoMap[gKey].nome=m.nome;
+        const eKey=nn+'|'+dt+'|'+emp;
+        const extra=parseFloat(pagExtrasMap[eKey]||0)||0;
+        const chuvaVal=parseFloat(pagExtrasMap[eKey+'|chuva']||0)||0;
+        grupoMap[gKey].emps.push({emp,d,eKey,extra,chuvaVal,nn});
+        (d.turnos?[...d.turnos]:[d.turno||'Noite']).forEach(t=>grupoMap[gKey].turnos.add(t));
+      });
+      grupos=Object.values(grupoMap);
+    }else{
+      const grupoMap={};
+      entradas.forEach(({emp,m,d,nn})=>{
+        const gKey=pagGrupoKey(m.nome);
+        if(!grupoMap[gKey]) grupoMap[gKey]={nome:m.nome,gKey,emps:[],turnos:new Set(),totalQtd:0,totalValEnt:0};
+        if(m.nome.length>grupoMap[gKey].nome.length) grupoMap[gKey].nome=m.nome;
+        const eKey=nn+'|'+dt+'|'+emp;
+        const extra=parseFloat(pagExtrasMap[eKey]||0)||0;
+        const chuvaVal=parseFloat(pagExtrasMap[eKey+'|chuva']||0)||0;
+        grupoMap[gKey].emps.push({emp,d,eKey,extra,chuvaVal,nn});
+        (d.turnos?[...d.turnos]:[d.turno||'Noite']).forEach(t=>grupoMap[gKey].turnos.add(t));
+      });
+      grupos=Object.values(grupoMap);
+    }
+    grupos.forEach(g=>{
+      const manual=g.emps.reduce((s,ie)=>s+(ie.extra||0)+(ie.chuvaVal||0),0);
+      const aligned=dashMap[g.gKey] || null;
+      const meta=aligned || pagFallbackGroupMeta(g);
+      g.emps._groupMeta=meta;
+      g.totalQtd=meta.totalQtd || g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0);
+      g.totalValEnt=(meta.totalAligned || meta.valorEntrega || 0) + manual;
+    });
+    return grupos.sort((a,b)=>(b.totalValEnt-a.totalValEnt)||a.nome.localeCompare(b.nome,'pt-BR'));
+  }
+  pagRender=function(){
+    const main=document.getElementById('pag-main');
+    if(!main) return;
+    _pagChuvaEKeys=[];
+    const ef=pagSelectedEmps();
+    const filtroNome=PAG_FILTROS.nome?pagNomeNorm(PAG_FILTROS.nome):'';
+    const temDados=ef.some(emp=>Object.keys(PAG_DATA[emp]||{}).length>0);
+    if(!temDados){
+      main.innerHTML='<div class="pempty"><div class="pei">🏍️</div><p>Nenhum dado carregado no dashboard. Aguarde a leitura da base sincronizada no Firebase.</p></div>';
+      return;
+    }
+    pagWithDashboardScope(({emps,lojas})=>{
+      const allDates=getAllDates();
+      const de=dateToNum(fDataDe), ate=dateToNum(fDataAte);
+      const activeDates=allDates.filter(d=>{ const n=dateToNum(d); return (!de||n>=de) && (!ate||n<=ate); });
+      const data=filtered();
+      const piv=pivot(data, activeDates);
+      if(!data.length){
+        main.innerHTML='<div class="pempty"><div class="pei">🔍</div><p>Nenhum dado para os filtros selecionados.</p></div>';
+        return;
+      }
+      const chips=emps.map(emp=>{
+        const loja=pagEmpToLojaLabel(emp);
+        const dataEmp=data.filter(r=>r.loja===loja);
+        if(!dataEmp.length) return '';
+        const pivEmp=pivot(dataEmp, activeDates);
+        const totalEnt=dataEmp.reduce((s,r)=>s+(r.entregas||0),0);
+        const totalPagar=pagCalcPivotTotalAPagar(pivEmp);
+        return `<span class="chip">${PAG_EMP_LABEL[emp]}: ${pivEmp.length} motoboys · ${totalEnt} ent · <b>R$ ${totalPagar.toFixed(2)}</b></span>`;
+      }).filter(Boolean).join('');
+      let html='<div class="pstatus-row">'+chips+'</div>';
+      const diasPivot={};
+      activeDates.forEach(dt=>{
+        const grupos=pagBuildGroupsForDay(dt, emps, filtroNome);
+        if(grupos.length) diasPivot[dt]=grupos;
+      });
+      const diasFiltrados=Object.keys(diasPivot).sort((a,b)=>pagDateNum(a)-pagDateNum(b));
+      if(!diasFiltrados.length){
+        main.innerHTML=html+'<div class="pempty"><div class="pei">🔍</div><p>Nenhum dado para os filtros selecionados.</p></div>';
+        return;
+      }
+      const totalEnt=data.reduce((s,r)=>s+(r.entregas||0),0);
+      const totalTaxa=data.reduce((s,r)=>s+(r.taxa_recebida||0),0);
+      const totalGarantido=piv.reduce((s,m)=>s+(calcMinimo10(m,(m.loja||'').split('+')[0]||'Just Burger')||0),0);
+      const manualTotal=diasFiltrados.reduce((s,dt)=>s+diasPivot[dt].reduce((ss,g)=>ss+g.emps.reduce((sx,ie)=>sx+(ie.extra||0)+(ie.chuvaVal||0),0),0),0);
+      const totalPagar=pagCalcPivotTotalAPagar(piv)+manualTotal;
+      html+=`<div class="psum-cards">
+        <div class="pscard"><div class="sv">${diasFiltrados.length}</div><div class="sl">Dias</div></div>
+        <div class="pscard"><div class="sv">${totalEnt}</div><div class="sl">Entregas</div></div>
+        <div class="pscard gold"><div class="sv">R$ ${totalTaxa.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
+        ${totalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${totalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
+        <div class="pscard green"><div class="sv">R$ ${totalPagar.toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
+      </div>`;
+      diasFiltrados.forEach((dt,dIdx)=>{
+        const grupos=diasPivot[dt];
+        const diaQtd=grupos.reduce((s,g)=>s+(g.totalQtd||0),0);
+        const diaVal=grupos.reduce((s,g)=>s+(g.totalValEnt||0),0);
+        const dowAbrev=PAG_DIAS_PT[pagDiaSemana(dt)];
+        const dayLabel=pagFormatDiaLabel(dt);
+        html+=`<div class="pdia-bloco" id="pdia-${dIdx}">
+          <div class="pdia-header" onclick="pagToggleDia(${dIdx})">
+            <span class="pdia-toggle open" id="pdtog-${dIdx}">▼</span>
+            <span class="pdia-dow">${dowAbrev}</span>
+            <span class="pdia-date">${dayLabel}</span>
+            <span class="pdia-total-ent">${diaQtd} entregas</span>
+            <span class="pdia-total-val" id="pdiaval-${dIdx}">R$ ${diaVal.toFixed(2)}</span>
+          </div>
+          <div class="pdia-body open" id="pdbody-${dIdx}">`;
+        grupos.forEach((g,mIdx)=>{
+          const dRep=g.emps[0].d;
+          html+=pagMotoHtml(dIdx,0,mIdx,dt,g.nome,dRep,g.emps[0].emp,g.emps);
+        });
+        html+='</div></div>';
+      });
+      main.innerHTML=html;
+    });
+  };
+})();
+</script>
 <script>(function(){
   const LOCAL_MONTHS = ['2026-03','2026-04'];
   const DEFAULT_DE = '01/03/2026';
@@ -7100,7 +7352,7 @@ function pagAbrirCadastroPix(){
       const enriched = await fetchLocalRows();
       const legacyRows = rowsToLegacyLike(enriched);
       const map={}, detail=[], stats={}, counters={cancelados:0,balcao:0,semDado:0}, seen=new Set();
-      if(typeof ingestMotoRows !== 'function') throw new Error('ingestMotoRows ausente');
+      if(typeof ingestMotoRows !== 'function') throw new Error('ingestMotoRows ausente — base HTML errada');
       ingestMotoRows(legacyRows, map, detail, stats, counters, seen, 'local_bundle_marabr_2026');
       RAW = Object.values(map).sort((a,b)=>dateToNum(a.data)-dateToNum(b.data));
       RAW_DETAIL = detail;
@@ -7127,10 +7379,9 @@ function pagAbrirCadastroPix(){
       window.__motoLoading = false;
     }
   }
-  // override de TUDO que pode buscar base legada
   window.loadMotoboysLegacyData = function(){ return loadLocalAndRender(); };
   window.loadFromFirebaseMotoboys = function(){ return loadLocalAndRender(); };
-  window.maybeReloadMotoData = function(){ /* desativado */ };
+  window.maybeReloadMotoData = function(){};
   window.clearAllData = function(){ clearAllLegacy(); loadLocalAndRender(); };
   function bootstrap(){ decorateUi(); clearAllLegacy(); loadLocalAndRender(); }
   if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', ()=>requestAnimationFrame(bootstrap), { once:true }); }
