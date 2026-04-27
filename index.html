@@ -1158,13 +1158,9 @@ function nomeNorm(s){
 // Esses motoboys NÃO entram no cálculo de valor a pagar nem na tabela.
 // Seus pedidos são contabilizados separadamente no card de "Não Contabilizados".
 function isNomeEspecial(nome){
-  const n = String(nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
-  // Detecta CONFIRMADO (todas variações), AVALIACAO (todas variações), AHAM SUSHI (com/sem espaço/hífen)
-  if(/\bCONFIRMAD[OA]\b/.test(n)) return true;
-  if(/\bAVALIAC[AO]E?S?\b/.test(n)) return true;
-  if(/\bAHAM\s*SUSHI\b/.test(n)) return true;
-  if(/^AHAMSUSHI\b/.test(n)) return true;
-  return false;
+  const n = String(nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
+  // Detecta: "CONFIRMADO", "AAA CONFIRMADO", "AAA-CONFIRMADO", ou qualquer variação com prefixo
+  return /\bCONFIRMADO\b/.test(n);
 }
 
 // Palavras ignoradas na comparação (conectivos)
@@ -5518,8 +5514,7 @@ function pagGetDashboardAlignedContext(){
     const totalEntregas = data.reduce((s, r) => s + (r.entregas || 0), 0);
     const totalTaxaRecebida = data.reduce((s, r) => s + (r.taxa_recebida || 0), 0);
     const totalGarantido = piv.reduce((s, m) => s + calcMinimo10(m, (m.loja || '').split('+')[0] || 'todas'), 0);
-    // totalAPagar provisório (será sobrescrito pela soma de perDay para garantir consistência com somatório dos dias)
-    let totalAPagar = piv.reduce((s, m) => {
+    const totalAPagar = piv.reduce((s, m) => {
       const lojaBase = (m.loja || '').split('+')[0] || 'todas';
       return s + calcPagamento(m, lojaBase) + calcKmAdic(m, lojaBase) + calcMinimo10(m, lojaBase) + calcTxTrans(m, lojaBase) + (getPayConfig(lojaBase).chuva ? 10 : 0);
     }, 0);
@@ -5540,14 +5535,6 @@ function pagGetDashboardAlignedContext(){
       };
     });
 
-    // Garante que o card de Total a Pagar bata com a soma dos dias mostrados
-    const totalAPagarFromDays = Object.values(perDay).reduce((s, d) => s + (d.pagar || 0), 0);
-    if(totalAPagarFromDays > 0) totalAPagar = totalAPagarFromDays;
-    // Garante que o card de Total a Pagar bata também com a soma dos cards por empresa
-    const totalAPagarFromCompanies = Object.values(companyPayTotals).reduce((s, v) => s + (v || 0), 0);
-    if(Math.abs(totalAPagarFromCompanies - totalAPagar) > 0.5 && totalAPagarFromCompanies > 0){
-      totalAPagar = totalAPagarFromCompanies;
-    }
     return { activeDates, data, piv, confirmados, cancelados, balcao, companyTotals, companyMotoCounts, companyPayTotals, totalEntregas, totalTaxaRecebida, totalGarantido, totalAPagar, perDay };
   } finally {
     fDataDe = savedDe;
@@ -7170,23 +7157,11 @@ function pagAbrirCadastroPix(){
     }
     grupos.forEach(g=>{
       const manual=g.emps.reduce((s,ie)=>s+(ie.extra||0)+(ie.chuvaVal||0),0);
-      // Cálculo primário: usar os totais já consolidados em PAG_DATA (idêntico à tela de Eficiência)
-      const fallbackMeta = pagFallbackGroupMeta(g);
-      // Cálculo secundário: tenta casar pelo gKey no dashMap (apenas como fonte adicional p/ km/garantido/txTrans)
-      const aligned = dashMap[g.gKey] || null;
-      // Se aligned existir e tiver totalQtd compatível com fallback, usa aligned (que tem km/garantido/txTrans detalhados)
-      // Senão, usa fallback puro (que já vem com totalValEnt correto de PAG_DATA)
-      let meta;
-      if(aligned && Math.abs((aligned.totalQtd||0) - (fallbackMeta.totalQtd||0)) < 0.5){
-        meta = aligned;
-      } else {
-        meta = fallbackMeta;
-      }
-      g.emps._groupMeta = meta;
-      g.totalQtd = meta.totalQtd || fallbackMeta.totalQtd || g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0);
-      // totalValEnt: prioriza meta.totalAligned se válido, senão fallback (que vem de d.totalValEnt em PAG_DATA)
-      const baseAligned = (meta && meta.totalAligned > 0) ? meta.totalAligned : fallbackMeta.totalAligned;
-      g.totalValEnt = (baseAligned || 0) + manual;
+      const aligned=dashMap[g.gKey] || null;
+      const meta=aligned || pagFallbackGroupMeta(g);
+      g.emps._groupMeta=meta;
+      g.totalQtd=meta.totalQtd || g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0);
+      g.totalValEnt=(meta.totalAligned || meta.valorEntrega || 0) + manual;
     });
     return grupos.sort((a,b)=>(b.totalValEnt-a.totalValEnt)||a.nome.localeCompare(b.nome,'pt-BR'));
   }
