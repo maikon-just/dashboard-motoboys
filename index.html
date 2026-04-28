@@ -1,8 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<script>(function(){try{['motoboys_raw_v2','motoboys_raw_detail_v1','motoboys_stats_dl_v1','motoboys_cache_meta_v2','motoboys_pay_config_v3'].forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});}catch(_e){}window.__FORCE_LOCAL_ONLY__=true;window.__DISABLE_FB_LEGACY__=true;window.__DISABLE_AUTO_PAYMENTS_OPEN__=true;var _origFetch=window.fetch?window.fetch.bind(window):null;window.fetch=function(input,init){try{var u=(typeof input==='string')?input:(input&&input.url)||'';if(/firebaseio\.com|relatorios_diarios|justburger-producao/i.test(u)){return Promise.resolve(new Response(JSON.stringify({}),{status:200,headers:{'Content-Type':'application/json'}}));}}catch(_e){}return _origFetch?_origFetch(input,init):Promise.reject(new Error('fetch indisponível'));};})();</script>
-
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
@@ -36,7 +34,7 @@
   .btn-upload{display:inline-flex;align-items:center;gap:6px;padding:8px 18px;border-radius:20px;background:var(--accent);color:#fff;border:none;cursor:pointer;font-size:.85rem;font-weight:600;transition:.2s}
   .btn-upload:hover{background:#3a7bc8}
   #uploadInput{display:none}
-  .upload-status{display:none!important;font-size:.75rem;color:var(--muted);padding:4px 10px;background:rgba(74,144,226,.1);border-radius:12px;border:1px solid var(--border)}
+  .upload-status{font-size:.75rem;color:var(--muted);padding:4px 10px;background:rgba(74,144,226,.1);border-radius:12px;border:1px solid var(--border)}
 
   /* ── FILTER BAR ── */
   .filter-bar{background:var(--card2);padding:18px 28px;display:flex;flex-wrap:wrap;gap:28px;align-items:flex-end;justify-content:center;border-bottom:1px solid var(--border);position:sticky;top:var(--header-h,90px);z-index:900}
@@ -414,7 +412,7 @@
     <div class="sub" id="headerPeriod">Março 2026 · 4 Empresas</div>
   </div>
   <div class="header-upload">
-    <div class="upload-status" id="uploadStatus" style="display:none"></div>
+    <div class="upload-status" id="uploadStatus">⏳ Lendo base do Firebase...</div>
     <button onclick="abrirPagamentos()" style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border-radius:20px;background:#9b59b6;color:#fff;border:none;cursor:pointer;font-size:.82rem;font-weight:600">💸 Pagamentos</button>
     <button class="btn-export" style="margin-left:8px" onclick="exportarExcel()">📥 Exportar Excel</button>
   </div>
@@ -441,7 +439,7 @@
         <span id="calLabel">📅 Selecione o período</span>
         <span style="font-size:.7rem;opacity:.6">▼</span>
       </button>
-      <div style="display:none;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+      <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
         <input type="date" id="inputDeIso" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:12px;font-size:.8rem;min-width:145px">
         <input type="date" id="inputAteIso" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:7px 10px;border-radius:12px;font-size:.8rem;min-width:145px">
         <button type="button" onclick="applyVisibleDateRange()" style="background:rgba(74,144,226,.14);border:1px solid rgba(74,144,226,.35);color:#cfe6ff;padding:7px 12px;border-radius:12px;cursor:pointer;font-size:.78rem;font-weight:700">Aplicar</button>
@@ -545,7 +543,7 @@
       <input id="cfgGarantidoMSTrans" class="pay-input" type="number" step="1" min="0" value="12" placeholder="12">
     </div>
     <input type="hidden" id="cfgAjusteTurno" value="0">
-    <div class="pay-field" style="justify-content:flex-end;margin-top:10px">
+    <div class="pay-field" style="justify-content:flex-end">
       <button class="btn-apply-pay" onclick="applyPayConfig()">✔ Aplicar</button>
     </div>
   </div>
@@ -1045,28 +1043,6 @@ function isoToBr(s){
   if(p.length < 3) return '';
   return `${p[2]}/${p[1]}/${p[0]}`;
 }
-function brToDateObj(s){
-  if(!s) return null;
-  const p = String(s).split('/');
-  if(p.length < 3) return null;
-  return new Date(Number(p[2]), Number(p[1]) - 1, Number(p[0]));
-}
-function dateObjToBr(dt){
-  return String(dt.getDate()).padStart(2,'0') + '/' + String(dt.getMonth()+1).padStart(2,'0') + '/' + dt.getFullYear();
-}
-function getImplicitDashboardRange(days=60){
-  const all = getAllDates();
-  const endStr = all.length ? all[all.length-1] : dateObjToBr(new Date());
-  const endDt = brToDateObj(endStr) || new Date();
-  const startDt = new Date(endDt.getFullYear(), endDt.getMonth(), endDt.getDate() - (days - 1));
-  return { de: dateObjToBr(startDt), ate: endStr, implicit: true };
-}
-function getDashboardDateBounds(){
-  if(fDataDe || fDataAte){
-    return { de: fDataDe || fDataAte || '', ate: fDataAte || fDataDe || '', implicit: false };
-  }
-  return getImplicitDashboardRange(60);
-}
 function syncDateInputsFromState(){
   const deIso = document.getElementById('inputDeIso');
   const ateIso = document.getElementById('inputAteIso');
@@ -1103,9 +1079,8 @@ function lojaMatch(loja){
   return fLojas.has('todas') || fLojas.has(loja);
 }
 function filtered(){
-  const bounds = getDashboardDateBounds();
-  const de  = dateToNum(bounds.de);
-  const ate = dateToNum(bounds.ate);
+  const de  = dateToNum(fDataDe);
+  const ate = dateToNum(fDataAte);
   return RAW.filter(r => {
     if(!lojaMatch(r.loja)) return false;
     if(fTurno && r.turno !== fTurno) return false;
@@ -1132,9 +1107,8 @@ function filtered(){
   });
 }
 function filteredNoName(){
-  const bounds = getDashboardDateBounds();
-  const de  = dateToNum(bounds.de);
-  const ate = dateToNum(bounds.ate);
+  const de  = dateToNum(fDataDe);
+  const ate = dateToNum(fDataAte);
   return RAW.filter(r => {
     if(!lojaMatch(r.loja)) return false;
     if(fTurno && r.turno !== fTurno) return false;
@@ -1158,13 +1132,9 @@ function nomeNorm(s){
 // Esses motoboys NÃO entram no cálculo de valor a pagar nem na tabela.
 // Seus pedidos são contabilizados separadamente no card de "Não Contabilizados".
 function isNomeEspecial(nome){
-  const n = String(nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
-  // Detecta CONFIRMADO (todas variações), AVALIACAO (todas variações), AHAM SUSHI (com/sem espaço/hífen)
-  if(/\bCONFIRMAD[OA]\b/.test(n)) return true;
-  if(/\bAVALIAC[AO]E?S?\b/.test(n)) return true;
-  if(/\bAHAM\s*SUSHI\b/.test(n)) return true;
-  if(/^AHAMSUSHI\b/.test(n)) return true;
-  return false;
+  const n = String(nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
+  // Detecta: "CONFIRMADO", "AAA CONFIRMADO", "AAA-CONFIRMADO", ou qualquer variação com prefixo
+  return /\bCONFIRMADO\b/.test(n);
 }
 
 // Palavras ignoradas na comparação (conectivos)
@@ -1475,10 +1445,11 @@ function render(){
   }
 
   const allDates = getAllDates();
-  const bounds = getDashboardDateBounds();
-  const de  = dateToNum(bounds.de);
-  const ate = dateToNum(bounds.ate);
-  const activeDates = allDates.filter(d => { const n=dateToNum(d); return (!de||n>=de) && (!ate||n<=ate); });
+  const de  = dateToNum(fDataDe);
+  const ate = dateToNum(fDataAte);
+  const activeDates = (fDataDe || fDataAte)
+    ? allDates.filter(d => { const n=dateToNum(d); return (!de||n>=de) && (!ate||n<=ate); })
+    : allDates;
 
   const data  = filtered();
   const stats = dailyStats(filteredNoName(), activeDates);
@@ -1980,23 +1951,13 @@ function normalizaTurno(t){
 // Mapeamento de códigos de loja para empresas
 const LOJA_MAP = {
   '21870': 'Just Burger',   // Delivery Direto Just Burger
-  '8f8983b5-89d1-4a88-9e3a-88dc8c8d76de': 'Just Burger',
-  'b7ef408a-49bd-46a6-aa5a-e091dfe64fdb': 'Gourmet',
-  '53551890-f285-4bb3-bcb5-d5cd645550a6': 'Aham Forneria',
-  '184af09d-8d79-469f-a5f0-d3b228534c7e': 'Aham Sushi',
   'just burger': 'Just Burger',
-  'just burger zona leste': 'Just Burger',
   'gourmet': 'Gourmet',
-  'just gourmet': 'Gourmet',
-  'just gourmet comida brasileira feijoada': 'Gourmet',
   'forneria': 'Aham Forneria',
-  'aham pizza forneria': 'Aham Forneria',
-  'aham forneria': 'Aham Forneria',
   'esfiha': 'Aham Forneria',
-  'aham esfiha - penha': 'Aham Forneria',
-  'aham esfiha penha': 'Aham Forneria',
   'sushi': 'Aham Sushi',
   'aham sushi': 'Aham Sushi',
+  'aham forneria': 'Aham Forneria',
 };
 
 function normalizaEmpresa(nomeLoja, codigoLoja){
@@ -2055,9 +2016,9 @@ if(_uploadInputChangeEl){
 
 // Mapeamento lojaNome (da aba eficiência) → chave PEMPS (da aba pagamentos)
 const _LOJA_TO_EMP = {
-  'just burger':'burger', 'burger':'burger', 'just burger zona leste':'burger',
-  'gourmet':'gourmet', 'just gourmet':'gourmet', 'just gourmet comida brasileira feijoada':'gourmet',
-  'aham forneria':'forneria', 'forneria':'forneria', 'aham pizza forneria':'forneria', 'esfiha':'forneria', 'aham esfiha':'forneria',
+  'just burger':'burger', 'burger':'burger',
+  'gourmet':'gourmet', 'just gourmet':'gourmet',
+  'aham forneria':'forneria', 'forneria':'forneria',
   'aham sushi':'sushi', 'sushi':'sushi'
 };
 
@@ -2343,7 +2304,7 @@ function clearAllData(){
   try{ localStorage.removeItem('motoboys_raw_detail_v1'); }catch(e){}
   RAW = []; RAW_DETAIL = [];
   const _stClear = document.getElementById('uploadStatus');
-  if(_stClear) _stClear.textContent = '';
+  if(_stClear) _stClear.textContent = '⏳ Aguardando upload do relatório';
   const now = new Date(); calYear = now.getFullYear(); calMonth = now.getMonth();
   render();
   showToast('🗑️ Todos os dados foram apagados. Faça upload do relatório para começar.');
@@ -2372,7 +2333,7 @@ function initData(){
         RAW = parsed;
         const totalEnt = RAW.reduce((s,r)=>s+r.entregas,0);
         const _stInit = document.getElementById('uploadStatus');
-        if(_stInit) _stInit.textContent = '';
+        if(_stInit) _stInit.textContent = `${RAW.length.toLocaleString()} grupos · ${totalEnt.toLocaleString()} entregas (salvo)`;
       }
     }
   } catch(e){ RAW=[]; }
@@ -2389,7 +2350,7 @@ function initData(){
   } catch(e){ window._uploadStatsByDateLoja = {}; }
   if(!RAW.length){
     const _stEmpty = document.getElementById('uploadStatus');
-    if(_stEmpty) _stEmpty.textContent = '';
+    if(_stEmpty) _stEmpty.textContent = '⏳ Aguardando upload do relatório';
   }
 }
 
@@ -4905,20 +4866,11 @@ const PAG_DIAS_FULL = ['Domingo','Segunda-feira','Terça-feira','Quarta-feira','
 const PAG_DATA    = {burger:{},gourmet:{},forneria:{},sushi:{}};
 const PAG_FILTROS = {emps:new Set(['todas']),turno:'todos',de:'',ate:'',nome:''};
 let pagPixMap    = {};
-let pagPixHistoryMap = {};
 let pagExtrasMap = {};
 // Mapa temporário para passar arrays de eKeys ao modal de chuva (evita HTML com aspas duplas)
 let _pagChuvaEKeys = [];  // cada posição é um array de eKeys para um motoboy/dia
-try{pagPixHistoryMap=JSON.parse(localStorage.getItem('mpag_pix_history_v1')||'{}');}catch(e){}
 try{pagPixMap   =JSON.parse(localStorage.getItem('mpag_pix_v2')||'{}');}catch(e){}
 try{pagExtrasMap=JSON.parse(localStorage.getItem('mpag_extras_v2')||'{}');}catch(e){}
-if(!pagPixHistoryMap || typeof pagPixHistoryMap!=='object') pagPixHistoryMap={};
-if(!pagPixMap || typeof pagPixMap!=='object') pagPixMap={};
-Object.keys(pagPixMap).forEach(nn=>{
-  if(!Array.isArray(pagPixHistoryMap[nn]) || !pagPixHistoryMap[nn].length){
-    pagPixHistoryMap[nn]=[{from:'',pix:String(pagPixMap[nn]||'').trim()}];
-  }
-});
 
 let pagCalYear=new Date().getFullYear(), pagCalMonth=new Date().getMonth()+1;
 let pagCalPickTarget='de', pagCalTempDe='', pagCalTempAte='';
@@ -5076,18 +5028,14 @@ function abrirPagamentos(){
   if(!overlay) return;
   overlay.classList.add('show');
   document.body.style.overflow='hidden';
-  const dashSnapshot = getDashboardFilterSnapshot();
-  const dashSig = getDashboardFilterSignature(dashSnapshot);
-  const shouldInheritFromDashboard = dashSig !== __pagLastInheritedDashSig;
-  syncPagFiltersFromDashboard(shouldInheritFromDashboard, dashSnapshot);
-  if(shouldInheritFromDashboard) __pagLastInheritedDashSig = dashSig;
+  syncPagFiltersFromDashboard(false);
   pagRenderCal();
   if(__pagCacheReady && __pagCacheSig === currentMotoCacheSignature()){
     pagRender();
     requestAnimationFrame(()=>{ adjustPagStickyBars(); });
     return;
   }
-  renderPagLoadingState('');
+  renderPagLoadingState('Carregando pagamentos a partir da base já sincronizada...');
   requestAnimationFrame(()=>{ adjustPagStickyBars(); });
   setTimeout(async()=>{
     try{
@@ -5251,34 +5199,6 @@ function pagDateNum(dd_mm_yyyy){
   const p=dd_mm_yyyy.split('/'); if(p.length<3) return 0;
   return parseInt(p[2]+p[1]+p[0]);
 }
-function pagPixHistoricoOrdenado(nn){
-  const arr=Array.isArray(pagPixHistoryMap[nn])?pagPixHistoryMap[nn].slice():[];
-  return arr.filter(x=>x&&typeof x.pix==='string').sort((a,b)=>(pagDateNum(a.from)||0)-(pagDateNum(b.from)||0));
-}
-function pagGetPixForDate(nn,dt){
-  const hist=pagPixHistoricoOrdenado(nn);
-  if(!hist.length) return String(pagPixMap[nn]||'').trim();
-  const alvo=pagDateNum(dt);
-  if(!alvo){
-    const last=hist[hist.length-1];
-    return String((last&&last.pix)||pagPixMap[nn]||'').trim();
-  }
-  let escolhido='';
-  hist.forEach(item=>{
-    const ini=pagDateNum(item.from)||0;
-    if(ini<=alvo) escolhido=String(item.pix||'').trim();
-  });
-  return escolhido || String(pagPixMap[nn]||'').trim();
-}
-function pagPixHistoryTitle(nn){
-  const hist=pagPixHistoricoOrdenado(nn).filter(x=>String(x.pix||'').trim());
-  if(!hist.length) return 'Chave Pix';
-  return 'Histórico Pix: '+hist.map(x=>`${x.from||'inicial'} → ${x.pix}`).join(' | ');
-}
-function pagSavePixHistory(){
-  try{localStorage.setItem('mpag_pix_history_v1',JSON.stringify(pagPixHistoryMap));}catch(e){}
-  try{localStorage.setItem('mpag_pix_v2',JSON.stringify(pagPixMap));}catch(e){}
-}
 function pagDiaSemana(dd_mm_yyyy){
   if(!dd_mm_yyyy) return 0;
   const [d,m,y]=dd_mm_yyyy.split('/');
@@ -5301,9 +5221,7 @@ function pagMotoHtml(dIdx,eIdx,mIdx,dt,nome,d,empM,itensEmp){
   // itensEmp = array de {emp, d, eKey, extra, chuvaVal} para o modo multi-empresa
   // Se null = modo empresa única
   const nn=pagNomeNorm(nome);
-  const pix=pagGetPixForDate(nn,dt);
-  const pixTitle=pagPixHistoryTitle(nn);
-  const metaGrupo=itensEmp&&itensEmp._groupMeta?itensEmp._groupMeta:null;
+  const pix=pagPixMap[nn]||'';
   // No modo multi, usa os turnos agregados do grupo; no modo único, do dia
   const turnosArr=itensEmp?(()=>{const s=new Set();itensEmp.forEach(ie=>{(ie.d.turnos?[...ie.d.turnos]:[ie.d.turno||'Noite']).forEach(t=>s.add(t));});return[...s];})():(d.turnos?[...d.turnos]:[d.turno||'Noite']);
   const tc=(turnosArr[0]||'noite').trim().toLowerCase();
@@ -5315,17 +5233,18 @@ function pagMotoHtml(dIdx,eIdx,mIdx,dt,nome,d,empM,itensEmp){
   let infoEmpresaHtml='', eKeyPrincipal='';
 
   if(itensEmp){
-    // MODO MULTI-EMPRESA: totais alinhados com a tela de desempenho
+    // MODO MULTI-EMPRESA: agrupa totais e mostra subtotais por empresa
     itensEmp.forEach(ie=>{
+      totalBase+=ie.d.totalValEnt;
       totalExtra+=ie.extra;
       totalChuva+=ie.chuvaVal;
+      totalGarantido+=(ie.d.garantido||0);
+      totalQtd+=ie.d.qtd;
       const cor=PAG_EMP_COLOR[ie.emp]||'var(--accent)';
       const lbl=PAG_EMP_LABEL[ie.emp]||ie.emp;
-      infoEmpresaHtml+=`<span class="pinfo-tag" style="background:${cor}22;color:${cor};border:1px solid ${cor}33" title="${lbl}: ${ie.d.qtd} entregas">${lbl.replace('Just ','').replace('Aham ','')} ${ie.d.qtd} ent</span>`;
+      const subTotal=ie.d.totalValEnt+ie.extra+ie.chuvaVal;
+      infoEmpresaHtml+=`<span class="pinfo-tag" style="background:${cor}22;color:${cor};border:1px solid ${cor}33" title="${lbl}: ${ie.d.qtd} ent">${lbl.replace('Just ','').replace('Aham ','')} R$${subTotal.toFixed(0)}</span>`;
     });
-    totalBase = metaGrupo ? (metaGrupo.valorEntrega + metaGrupo.kmAdic + metaGrupo.garantido + metaGrupo.txTrans + metaGrupo.chuvaCfg) : 0;
-    totalGarantido = metaGrupo ? (metaGrupo.garantido || 0) : 0;
-    totalQtd = metaGrupo ? (metaGrupo.totalQtd || 0) : itensEmp.reduce((s,ie)=>s+(ie.d.qtd||0),0);
     // eKey composto para extras/chuva compartilhados (usa o primeiro empM)
     eKeyPrincipal=nn+'|'+dt+'|'+itensEmp[0].emp;
   } else {
@@ -5349,11 +5268,8 @@ function pagMotoHtml(dIdx,eIdx,mIdx,dt,nome,d,empM,itensEmp){
   let tagsCompl='';
   if(totalGarantido>0) tagsCompl+=`<span class="pinfo-tag garantido">+R$ ${totalGarantido.toFixed(2)} grtd</span>`;
   if(isTrans){
-    if(metaGrupo&&metaGrupo.txTrans>0) tagsCompl+=`<span class="pinfo-tag trans">+R$ ${(metaGrupo.txTrans||0).toFixed(2)} trans</span>`;
-    else {
-      const mObj=PAG_DATA[empM]&&PAG_DATA[empM][nome];
-      if(mObj&&mObj.txTrans>0) tagsCompl+=`<span class="pinfo-tag trans">+R$ ${(mObj.txTrans/Math.max(Object.keys(mObj.dias).length,1)).toFixed(2)} trans</span>`;
-    }
+    const mObj=PAG_DATA[empM]&&PAG_DATA[empM][nome];
+    if(mObj&&mObj.txTrans>0) tagsCompl+=`<span class="pinfo-tag trans">+R$ ${(mObj.txTrans/Math.max(Object.keys(mObj.dias).length,1)).toFixed(2)} trans</span>`;
   }
 
   // Corridas: junta de todos os dias/empresas se multi
@@ -5405,7 +5321,7 @@ function pagMotoHtml(dIdx,eIdx,mIdx,dt,nome,d,empM,itensEmp){
       <div class="pmoto-controls">
         <input class="ppix-inp" type="text" value="${pix}" placeholder="Chave Pix..."
           style="width:180px;font-size:.73rem;padding:4px 9px"
-          onchange="pagSetPix('${nn}',this.value,'${dt}')" title="${pixTitle}">
+          onchange="pagSetPix('${nn}',this.value)" title="Chave Pix">
         <input class="pextra-inp" type="number" step="0.01" value="${totalExtra||''}" placeholder="+Ajuste"
           style="width:90px;font-size:.73rem;padding:4px 8px"
           onchange="pagSetExtra('${eKeyPrincipal}',this.value,${dIdx})" title="Valor extra/ajuste manual">
@@ -5422,140 +5338,6 @@ function pagMotoHtml(dIdx,eIdx,mIdx,dt,nome,d,empM,itensEmp){
       ${corridasHtml}
     </div>
   </div>`;
-}
-
-function pagBuildDashboardAlignedDayMap(dt){
-  const rowsDia = filtered().filter(r => r.data === dt);
-  const pivDia = pivot(rowsDia, [dt]);
-  const map = {};
-  pivDia.forEach(m => {
-    const num = pagNumCadastro(m.nome);
-    const gKey = num ? `NUM:${num}` : `NOME:${pagNomeNorm(m.nome)}`;
-    const lojaBase = (m.loja || '').split('+')[0] || 'todas';
-    const valorEntrega = calcPagamento(m, lojaBase);
-    const kmAdic = calcKmAdic(m, lojaBase);
-    const garantido = calcMinimo10(m, lojaBase);
-    const txTrans = calcTxTrans(m, lojaBase);
-    const chuvaCfg = getPayConfig(lojaBase).chuva ? 10 : 0;
-    map[gKey] = {
-      nome: m.nome,
-      totalQtd: m.total || 0,
-      valorEntrega,
-      kmAdic,
-      garantido,
-      txTrans,
-      chuvaCfg,
-      totalAligned: valorEntrega + kmAdic + garantido + txTrans + chuvaCfg
-    };
-  });
-  return map;
-}
-
-function pagGetDashboardAlignedContext(){
-  const savedDe = fDataDe;
-  const savedAte = fDataAte;
-  const savedTurno = fTurno;
-  const savedNome = fNome;
-  const savedLojas = (typeof fLojas !== 'undefined' && fLojas instanceof Set) ? new Set([...fLojas]) : new Set(['todas']);
-  const empToLoja = {burger:'Just Burger', gourmet:'Gourmet', forneria:'Aham Forneria', sushi:'Aham Sushi'};
-  try{
-    fDataDe = PAG_FILTROS.de || '';
-    fDataAte = PAG_FILTROS.ate || '';
-    fTurno = (PAG_FILTROS.turno && PAG_FILTROS.turno !== 'todos') ? PAG_FILTROS.turno : '';
-    fNome = String(PAG_FILTROS.nome || '').trim();
-    const lojasSel = PAG_FILTROS.emps.has('todas') ? ['todas'] : [...PAG_FILTROS.emps].map(emp => empToLoja[emp]).filter(Boolean);
-    fLojas = new Set(lojasSel.length ? lojasSel : ['todas']);
-
-    const allDates = getAllDates();
-    const bounds = getDashboardDateBounds();
-    const de = dateToNum(bounds.de);
-    const ate = dateToNum(bounds.ate);
-    const activeDates = allDates.filter(d => {
-      const n = dateToNum(d);
-      return (!de || n >= de) && (!ate || n <= ate);
-    });
-    const data = filtered();
-    const piv = pivot(data, activeDates);
-
-    let confirmados = 0;
-    RAW.forEach(r => {
-      if(!isNomeEspecial(r.nome)) return;
-      if(!lojaMatch(r.loja)) return;
-      if(fTurno && r.turno !== fTurno) return;
-      const dn = dateToNum(r.data);
-      if(de && dn < de) return;
-      if(ate && dn > ate) return;
-      confirmados += r.entregas || 0;
-    });
-
-    let cancelados = 0, balcao = 0;
-    if(window._uploadStatsByDateLoja){
-      Object.entries(window._uploadStatsByDateLoja).forEach(([key, val]) => {
-        const [dataKey, lojaKey] = key.split('|');
-        if(!lojaMatch(lojaKey)) return;
-        const dn = dateToNum(dataKey);
-        if(de && dn < de) return;
-        if(ate && dn > ate) return;
-        cancelados += val.cancelados || 0;
-        balcao += val.balcao || 0;
-      });
-    }
-
-    const companyTotals = {burger:0, gourmet:0, forneria:0, sushi:0};
-    const companyMotoCounts = {burger:0, gourmet:0, forneria:0, sushi:0};
-    const companyPayTotals = {burger:0, gourmet:0, forneria:0, sushi:0};
-    Object.entries(empToLoja).forEach(([emp, loja]) => {
-      const empData = data.filter(r => r.loja === loja);
-      const empPiv = pivot(empData, activeDates);
-      companyTotals[emp] = empData.reduce((s, r) => s + (r.entregas || 0), 0);
-      companyMotoCounts[emp] = empPiv.filter(m => (m.total || 0) > 0).length;
-      companyPayTotals[emp] = empPiv.reduce((s, m) => {
-        const lojaBase = (m.loja || loja).split('+')[0] || loja;
-        return s + calcPagamento(m, lojaBase) + calcKmAdic(m, lojaBase) + calcMinimo10(m, lojaBase) + calcTxTrans(m, lojaBase) + (getPayConfig(lojaBase).chuva ? 10 : 0);
-      }, 0);
-    });
-
-    const totalEntregas = data.reduce((s, r) => s + (r.entregas || 0), 0);
-    const totalTaxaRecebida = data.reduce((s, r) => s + (r.taxa_recebida || 0), 0);
-    const totalGarantido = piv.reduce((s, m) => s + calcMinimo10(m, (m.loja || '').split('+')[0] || 'todas'), 0);
-    // totalAPagar provisório (será sobrescrito pela soma de perDay para garantir consistência com somatório dos dias)
-    let totalAPagar = piv.reduce((s, m) => {
-      const lojaBase = (m.loja || '').split('+')[0] || 'todas';
-      return s + calcPagamento(m, lojaBase) + calcKmAdic(m, lojaBase) + calcMinimo10(m, lojaBase) + calcTxTrans(m, lojaBase) + (getPayConfig(lojaBase).chuva ? 10 : 0);
-    }, 0);
-
-    const perDay = {};
-    activeDates.forEach(dt => {
-      const rowsDia = data.filter(r => r.data === dt);
-      const pivDia = pivot(rowsDia, [dt]);
-      const totalPagarDia = pivDia.reduce((s, m) => {
-        const lojaBase = (m.loja || '').split('+')[0] || 'todas';
-        return s + calcPagamento(m, lojaBase) + calcKmAdic(m, lojaBase) + calcMinimo10(m, lojaBase) + calcTxTrans(m, lojaBase) + (getPayConfig(lojaBase).chuva ? 10 : 0);
-      }, 0);
-      perDay[dt] = {
-        entregas: rowsDia.reduce((s, r) => s + (r.entregas || 0), 0),
-        taxa: rowsDia.reduce((s, r) => s + (r.taxa_recebida || 0), 0),
-        pagar: totalPagarDia,
-        motoboys: pivDia.filter(m => (m.total || 0) > 0).length
-      };
-    });
-
-    // Garante que o card de Total a Pagar bata com a soma dos dias mostrados
-    const totalAPagarFromDays = Object.values(perDay).reduce((s, d) => s + (d.pagar || 0), 0);
-    if(totalAPagarFromDays > 0) totalAPagar = totalAPagarFromDays;
-    // Garante que o card de Total a Pagar bata também com a soma dos cards por empresa
-    const totalAPagarFromCompanies = Object.values(companyPayTotals).reduce((s, v) => s + (v || 0), 0);
-    if(Math.abs(totalAPagarFromCompanies - totalAPagar) > 0.5 && totalAPagarFromCompanies > 0){
-      totalAPagar = totalAPagarFromCompanies;
-    }
-    return { activeDates, data, piv, confirmados, cancelados, balcao, companyTotals, companyMotoCounts, companyPayTotals, totalEntregas, totalTaxaRecebida, totalGarantido, totalAPagar, perDay };
-  } finally {
-    fDataDe = savedDe;
-    fDataAte = savedAte;
-    fTurno = savedTurno;
-    fNome = savedNome;
-    fLojas = savedLojas;
-  }
 }
 
 // Render
@@ -5586,15 +5368,13 @@ function pagRender(){
     diasSet.add(dt);
   })));
 
-  const dashCtx = pagGetDashboardAlignedContext();
-
-  // Status chips alinhados com o dashboard principal
+  // Status chips
   let html='<div class="pstatus-row">';
   ef.forEach(emp=>{
-    const te = dashCtx.companyTotals[emp] || 0;
-    const n = dashCtx.companyMotoCounts[emp] || 0;
-    const tv = dashCtx.companyPayTotals[emp] || 0;
-    if(te>0 || n>0 || tv>0){
+    const n=Object.keys(PAG_DATA[emp]).length;
+    if(n>0){
+      const te=Object.values(PAG_DATA[emp]).reduce((s,m)=>s+Object.values(m.dias).reduce((ss,d)=>ss+d.qtd,0),0);
+      const tv=Object.values(PAG_DATA[emp]).reduce((s,m)=>s+Object.values(m.dias).reduce((ss,d)=>ss+d.totalValEnt,0),0);
       html+=`<span class="chip">${PAG_EMP_LABEL[emp]}: ${n} motoboys · ${te} ent · <b>R$ ${tv.toFixed(2)}</b></span>`;
     }
   });
@@ -5604,13 +5384,14 @@ function pagRender(){
 
   if(modoMulti){
     // ════════════════════════════════════════════════════════
-    // MODO MULTI-EMPRESA: aplica a MESMA lógica fuzzy da tela de desempenho
-    // (nomesIguais + construirGruposNomes), preservando prioridade do cadastro
+    // MODO MULTI-EMPRESA: compila motoboys pelo número de cadastro
+    // Mostra lista única por dia — sem separador por empresa
     // ════════════════════════════════════════════════════════
 
+    // Para cada dia, agrupa motoboys pelo número de cadastro (ou nome normalizado se não houver)
     const diasPivot={};
     diasOrdenados.forEach(dt=>{
-      const entradas=[];
+      const grupoMap={}; // chave = numCadastro ou nomeNorm → { nome, emps:[{emp,d}], ... }
       ef.forEach(emp=>{
         Object.values(PAG_DATA[emp]).forEach(m=>{
           if(!m.dias[dt]) return;
@@ -5621,48 +5402,27 @@ function pagRender(){
           }
           const nn=pagNomeNorm(m.nome);
           if(filtroNome&&!nn.includes(filtroNome)) return;
-          entradas.push({ emp, m, d, nn, num: pagNumCadastro(m.nome) });
+          // Chave de agrupamento: número de cadastro ou nome normalizado
+          const num=pagNumCadastro(m.nome);
+          const gKey=num||nn;
+          if(!grupoMap[gKey]){
+            grupoMap[gKey]={nome:m.nome,gKey,emps:[],totalValEnt:0,totalQtd:0,turnos:new Set()};
+          }
+          // Usa o nome mais longo (mais completo)
+          if(m.nome.length>grupoMap[gKey].nome.length) grupoMap[gKey].nome=m.nome;
+          const nn2=pagNomeNorm(m.nome);
+          const eKey=nn2+'|'+dt+'|'+emp;
+          const extra=parseFloat(pagExtrasMap[eKey]||0);
+          const chuvaVal=parseFloat(pagExtrasMap[eKey+'|chuva']||0);
+          grupoMap[gKey].emps.push({emp,d,eKey,extra,chuvaVal,nn:nn2});
+          grupoMap[gKey].totalValEnt+=d.totalValEnt+extra+chuvaVal;
+          grupoMap[gKey].totalQtd+=d.qtd;
+          const ts=d.turnos?[...d.turnos]:[d.turno||'Noite'];
+          ts.forEach(t=>grupoMap[gKey].turnos.add(t));
         });
       });
-
-      if(!entradas.length) return;
-
-      const nomesSemCadastro=[...new Set(entradas.filter(x=>!x.num).map(x=>x.nn))];
-      const mapaFuzzy=nomesSemCadastro.length && typeof construirGruposNomes === 'function'
-        ? construirGruposNomes(nomesSemCadastro)
-        : Object.fromEntries(nomesSemCadastro.map(nn=>[nn,nn]));
-      const dashMap = pagBuildDashboardAlignedDayMap(dt);
-
-      const grupoMap={};
-      entradas.forEach(({emp,m,d,nn,num})=>{
-        const repNome = num ? nn : (mapaFuzzy[nn] || nn);
-        const gKey = num ? `NUM:${num}` : `NOME:${repNome}`;
-        if(!grupoMap[gKey]) grupoMap[gKey]={nome:m.nome,gKey,emps:[],totalValEnt:0,totalQtd:0,turnos:new Set()};
-        if(m.nome.length>grupoMap[gKey].nome.length) grupoMap[gKey].nome=m.nome;
-        const eKey=nn+'|'+dt+'|'+emp;
-        const extra=parseFloat(pagExtrasMap[eKey]||0);
-        const chuvaVal=parseFloat(pagExtrasMap[eKey+'|chuva']||0);
-        grupoMap[gKey].emps.push({emp,d,eKey,extra,chuvaVal,nn});
-        const ts=d.turnos?[...d.turnos]:[d.turno||'Noite'];
-        ts.forEach(t=>grupoMap[gKey].turnos.add(t));
-      });
-
-      Object.values(grupoMap).forEach(g=>{
-        const manual = g.emps.reduce((s,ie)=>s + (ie.extra||0) + (ie.chuvaVal||0), 0);
-        const aligned = dashMap[g.gKey];
-        if(aligned){
-          if(aligned.nome && aligned.nome.length > g.nome.length) g.nome = aligned.nome;
-          g.totalQtd = aligned.totalQtd || g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0);
-          g.totalValEnt = (aligned.totalAligned || 0) + manual;
-          g.emps._groupMeta = aligned;
-        }else{
-          g.totalQtd = g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0);
-          g.totalValEnt = g.emps.reduce((s,ie)=>s+(ie.d.totalValEnt||0)+(ie.extra||0)+(ie.chuvaVal||0),0);
-        }
-      });
-
       if(Object.keys(grupoMap).length>0){
-        diasPivot[dt]=Object.values(grupoMap).sort((a,b)=>(b.totalValEnt-a.totalValEnt)||a.nome.localeCompare(b.nome,'pt-BR'));
+        diasPivot[dt]=Object.values(grupoMap).sort((a,b)=>b.totalValEnt-a.totalValEnt);
       }
     });
 
@@ -5672,21 +5432,31 @@ function pagRender(){
       return;
     }
 
-    // Totais gerais alinhados com o dashboard principal
+    // Totais gerais
+    let gtotalQtd=0,gtotalValEnt=0,gtotalEntrega=0,gtotalExtras=0,gtotalGarantido=0;
+    diasFiltrados.forEach(dt=>diasPivot[dt].forEach(g=>{
+      g.emps.forEach(ie=>{
+        gtotalQtd+=ie.d.qtd;
+        gtotalValEnt+=ie.d.totalValEnt;
+        gtotalEntrega+=ie.d.totalEntrega;
+        gtotalExtras+=ie.extra+ie.chuvaVal;
+        gtotalGarantido+=(ie.d.garantido||0);
+      });
+    }));
     html+=`<div class="psum-cards">
       <div class="pscard"><div class="sv">${diasFiltrados.length}</div><div class="sl">Dias</div></div>
-      <div class="pscard"><div class="sv">${dashCtx.totalEntregas}</div><div class="sl">Entregas</div></div>
-      <div class="pscard gold"><div class="sv">R$ ${dashCtx.totalTaxaRecebida.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
-      ${dashCtx.totalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${dashCtx.totalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
-      <div class="pscard green"><div class="sv">R$ ${dashCtx.totalAPagar.toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
+      <div class="pscard"><div class="sv">${gtotalQtd}</div><div class="sl">Entregas</div></div>
+      <div class="pscard gold"><div class="sv">R$ ${gtotalEntrega.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
+      ${gtotalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${gtotalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
+      <div class="pscard green"><div class="sv">R$ ${(gtotalValEnt+gtotalExtras).toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
     </div>`;
 
     diasFiltrados.forEach((dt,dIdx)=>{
       const dayLabel=pagFormatDiaLabel(dt);
       const dowAbrev=PAG_DIAS_PT[pagDiaSemana(dt)];
       const grupos=diasPivot[dt];
-      const diaQtd=(dashCtx.perDay[dt]&&dashCtx.perDay[dt].entregas)||grupos.reduce((s,g)=>s+g.totalQtd,0);
-      const diaVal=(dashCtx.perDay[dt]&&dashCtx.perDay[dt].pagar)||grupos.reduce((s,g)=>s+g.totalValEnt,0);
+      const diaQtd=grupos.reduce((s,g)=>s+g.totalQtd,0);
+      const diaVal=grupos.reduce((s,g)=>s+g.totalValEnt,0);
       html+=`<div class="pdia-bloco" id="pdia-${dIdx}">
         <div class="pdia-header" onclick="pagToggleDia(${dIdx})">
           <span class="pdia-toggle open" id="pdtog-${dIdx}">▼</span>
@@ -5739,7 +5509,7 @@ function pagRender(){
         });
       });
       if(Object.keys(grupoMap).length>0){
-        diasPivot[dt]=Object.values(grupoMap).sort((a,b)=>(b.totalValEnt-a.totalValEnt)||a.nome.localeCompare(b.nome,'pt-BR'));
+        diasPivot[dt]=Object.values(grupoMap).sort((a,b)=>b.totalValEnt-a.totalValEnt);
       }
     });
 
@@ -5749,21 +5519,31 @@ function pagRender(){
       return;
     }
 
-    // Totais gerais alinhados com o dashboard principal
+    // Totais gerais
+    let gtotalQtd=0,gtotalValEnt=0,gtotalEntrega=0,gtotalExtras=0,gtotalGarantido=0;
+    diasFiltrados.forEach(dt=>diasPivot[dt].forEach(g=>{
+      g.emps.forEach(ie=>{
+        gtotalQtd+=ie.d.qtd;
+        gtotalValEnt+=ie.d.totalValEnt;
+        gtotalEntrega+=ie.d.totalEntrega;
+        gtotalExtras+=ie.extra+ie.chuvaVal;
+        gtotalGarantido+=(ie.d.garantido||0);
+      });
+    }));
     html+=`<div class="psum-cards">
       <div class="pscard"><div class="sv">${diasFiltrados.length}</div><div class="sl">Dias</div></div>
-      <div class="pscard"><div class="sv">${dashCtx.totalEntregas}</div><div class="sl">Entregas</div></div>
-      <div class="pscard gold"><div class="sv">R$ ${dashCtx.totalTaxaRecebida.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
-      ${dashCtx.totalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${dashCtx.totalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
-      <div class="pscard green"><div class="sv">R$ ${dashCtx.totalAPagar.toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
+      <div class="pscard"><div class="sv">${gtotalQtd}</div><div class="sl">Entregas</div></div>
+      <div class="pscard gold"><div class="sv">R$ ${gtotalEntrega.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
+      ${gtotalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${gtotalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
+      <div class="pscard green"><div class="sv">R$ ${(gtotalValEnt+gtotalExtras).toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
     </div>`;
 
     diasFiltrados.forEach((dt,dIdx)=>{
       const dowAbrev=PAG_DIAS_PT[pagDiaSemana(dt)];
       const dayLabel=pagFormatDiaLabel(dt);
       const grupos=diasPivot[dt];
-      const diaQtd=(dashCtx.perDay[dt]&&dashCtx.perDay[dt].entregas)||grupos.reduce((s,g)=>s+g.totalQtd,0);
-      const diaVal=(dashCtx.perDay[dt]&&dashCtx.perDay[dt].pagar)||grupos.reduce((s,g)=>s+g.totalValEnt,0);
+      const diaQtd=grupos.reduce((s,g)=>s+g.totalQtd,0);
+      const diaVal=grupos.reduce((s,g)=>s+g.totalValEnt,0);
       html+=`<div class="pdia-bloco" id="pdia-${dIdx}">
         <div class="pdia-header" onclick="pagToggleDia(${dIdx})">
           <span class="pdia-toggle open" id="pdtog-${dIdx}">▼</span>
@@ -5905,18 +5685,9 @@ function pagChuvaModal(idxKeys, eKeySingle, nomeMoto, dt, dIdx){
     pagRender();
   });
 }
-function pagSetPix(nn,val,dt){
-  const pix=String(val||'').trim();
-  const from=String(dt||PAG_FILTROS.de||PAG_FILTROS.ate||'').trim();
-  if(!Array.isArray(pagPixHistoryMap[nn])) pagPixHistoryMap[nn]=[];
-  pagPixHistoryMap[nn]=pagPixHistoricoOrdenado(nn).filter(item=>String(item.from||'')!==from);
-  if(pix) pagPixHistoryMap[nn].push({from,pix});
-  pagPixHistoryMap[nn]=pagPixHistoricoOrdenado(nn);
-  const last=pagPixHistoryMap[nn][pagPixHistoryMap[nn].length-1];
-  if(last&&String(last.pix||'').trim()) pagPixMap[nn]=String(last.pix||'').trim();
-  else delete pagPixMap[nn];
-  if(!pagPixHistoryMap[nn].length) delete pagPixHistoryMap[nn];
-  pagSavePixHistory();
+function pagSetPix(nn,val){
+  pagPixMap[nn]=val.trim();
+  try{localStorage.setItem('mpag_pix_v2',JSON.stringify(pagPixMap));}catch(e){}
 }
 
 // ── Helper: chave de agrupamento para resumo (usa nº cadastro se disponível)
@@ -5962,10 +5733,7 @@ function pagGerarResumo(){
       });
     });
   });
-  const lista=Object.values(consolidado).filter(v=>v.qtd>0).map(v=>{
-    const empMaior=Object.entries(v.porEmp||{}).sort((a,b)=>(b[1]-a[1])||String(empNames[a[0]]||a[0]).localeCompare(String(empNames[b[0]]||b[0]),'pt-BR'))[0]?.[0]||'';
-    return {...v, empMaior};
-  }).sort((a,b)=>String(empNames[a.empMaior]||a.empMaior).localeCompare(String(empNames[b.empMaior]||b.empMaior),'pt-BR')||(b.total-a.total)||a.nome.localeCompare(b.nome,'pt-BR'));
+  const lista=Object.values(consolidado).filter(v=>v.qtd>0).sort((a,b)=>b.total-a.total);
   if(lista.length===0){
     showToast('⚠️ Nenhum dado encontrado para os filtros selecionados. Verifique empresa, data e turno.');
     return;
@@ -5989,13 +5757,13 @@ function pagGerarResumo(){
       <th style="text-align:right">💰 Total a Pagar</th>
     </tr></thead><tbody>`;
   lista.forEach((m,i)=>{
-    const pix=pagGetPixForDate(m.nn,PAG_FILTROS.ate||PAG_FILTROS.de||'');
+    const pix=pagPixMap[m.nn]||'';
     let empCells=empCols.map(e=>`<td style="text-align:right;color:${empColors[e]||'var(--accent)'}">R$ ${(m.porEmp[e]||0).toFixed(2)}</td>`).join('');
     html+=`<tr>
       <td style="color:var(--muted)">${i+1}</td>
       <td style="font-weight:700">${m.nome}</td>
       <td><input class="ppix-inp" value="${pix}" placeholder="Cole a chave Pix..."
-          onchange="pagSetPix('${m.nn}',this.value,'${PAG_FILTROS.ate||PAG_FILTROS.de||''}')" title="${pagPixHistoryTitle(m.nn)}" style="width:160px"></td>
+          onchange="pagSetPix('${m.nn}',this.value)" style="width:160px"></td>
       <td style="text-align:right">${m.qtd}</td>
       <td style="text-align:right;color:var(--gold)">R$ ${m.totalEntrega.toFixed(2)}</td>
       ${empCells}
@@ -6192,20 +5960,14 @@ function pagExportarExcel(){
       });
     });
   });
-  const lista=Object.entries(consolidado)
-    .filter(([,v])=>v.qtd>0)
-    .map(([gKey,m])=>{
-      const empMaior=Object.entries(m.porEmp||{}).sort((a,b)=>(b[1]-a[1])||String(empNames[a[0]]||a[0]).localeCompare(String(empNames[b[0]]||b[0]),'pt-BR'))[0]?.[0]||'';
-      return [gKey,{...m,empMaior}];
-    })
-    .sort((a,b)=>String(empNames[a[1].empMaior]||a[1].empMaior).localeCompare(String(empNames[b[1].empMaior]||b[1].empMaior),'pt-BR')||(b[1].total-a[1].total)||a[1].nome.localeCompare(b[1].nome,'pt-BR'));
+  const lista=Object.entries(consolidado).filter(([,v])=>v.qtd>0).sort((a,b)=>b[1].total-a[1].total);
   if(lista.length===0){showToast('⚠️ Sem dados para exportar.');return;}
   const empCols=ef.filter(emp=>lista.some(([,m])=>m.porEmp[emp]>0));
   // Monta headers dinâmicos por empresa selecionada
   const headers=['#','Motoboy','Chave Pix',...empCols.map(e=>'R$ '+empNames[e]),'R$ Total a Pagar'];
   const aoa=[headers]; // array-of-arrays para controle de formato
   lista.forEach(([gKey,m],i)=>{
-    const row=[i+1,m.nome,pagGetPixForDate(m.nn||gKey,PAG_FILTROS.ate||PAG_FILTROS.de||'')||''];
+    const row=[i+1,m.nome,pagPixMap[m.nn||gKey]||''];
     empCols.forEach(emp=>row.push(+(m.porEmp[emp]||0).toFixed(2)));
     row.push(+m.total.toFixed(2));
     aoa.push(row);
@@ -6270,7 +6032,7 @@ async function pagSalvarPagamentos(){
       if(totalQtd>0){
         registros.push({
           motoboy:m.nome, empresa:emp, turno:PAG_FILTROS.turno,
-          chave_pix:pagGetPixForDate(nn,PAG_FILTROS.ate||PAG_FILTROS.de||''), entregas:totalQtd,
+          chave_pix:pagPixMap[nn]||'', entregas:totalQtd,
           taxa_recebida:+totalEntrega.toFixed(2),
           valor_base:+totalBase.toFixed(2), garantido:+totalGarantido.toFixed(2),
           extra:+totalExtra.toFixed(2), total_pagar:+totalPagar.toFixed(2),
@@ -6346,7 +6108,7 @@ async function pagVerHistorico(){
           <th style="text-align:right">Extra</th>
           <th style="text-align:right;color:var(--green)">💰 Total</th>
         </tr></thead><tbody>`;
-      g.registros.sort((a,b)=>(b.total_pagar-a.total_pagar)||String(a.motoboy||'').localeCompare(String(b.motoboy||''),'pt-BR')).forEach((r,ri)=>{
+      g.registros.sort((a,b)=>b.total_pagar-a.total_pagar).forEach((r,ri)=>{
         html+=`<tr>
           <td style="color:var(--muted)">${ri+1}</td>
           <td style="font-weight:700">${r.motoboy}</td>
@@ -6426,8 +6188,6 @@ function pagAbrirCadastroPix(){
 <script>
 (function(){
   const FIREBASE_URL = 'https://justburger-producao-e9b27-default-rtdb.firebaseio.com';
-  const INDEX_ROOT = 'vendas_indexadas';
-  const INDEXED_COMPANY_KEYS = ['burger-matriz','burger-abc','burger-gru','gourmet','aham-forneria','aham-sushi'];
   const REPORTS_URL = FIREBASE_URL + '/relatorios_diarios.json';
   const CACHE_META_KEY = 'motoboys_cache_meta_v2';
 
@@ -6480,47 +6240,16 @@ function pagAbrirCadastroPix(){
     __pagCacheReady = false;
     __pagSyncPromise = null;
   }
-  let __pagLastInheritedDashSig = '';
-  function getDashboardFilterSnapshot(){
-    const dashBounds = (typeof getDashboardDateBounds === 'function') ? getDashboardDateBounds() : { de: fDataDe || '', ate: fDataAte || '' };
-    const lojasAtivas = (typeof fLojas !== 'undefined' && fLojas instanceof Set) ? [...fLojas] : [];
-    const lojasNorm = (!lojasAtivas.length || lojasAtivas.includes('todas')) ? ['todas'] : lojasAtivas.slice();
-    const mapped = lojasNorm.includes('todas') ? ['todas'] : lojasNorm.map(loja => PAG_EMP_LOJA[loja]).filter(Boolean);
-    return {
-      de: dashBounds.de || '',
-      ate: dashBounds.ate || dashBounds.de || '',
-      lojas: lojasNorm,
-      emps: mapped.length ? [...new Set(mapped)] : ['todas'],
-      turno: (typeof fTurno !== 'undefined' && fTurno) ? fTurno : 'todos',
-      nome: (typeof fNome !== 'undefined' && fNome) ? String(fNome).trim() : ''
-    };
-  }
-  function getDashboardFilterSignature(snapshot){
-    const s = snapshot || getDashboardFilterSnapshot();
-    return JSON.stringify({
-      de: s.de || '',
-      ate: s.ate || '',
-      lojas: [...(s.lojas || ['todas'])].sort(),
-      emps: [...(s.emps || ['todas'])].sort(),
-      turno: s.turno || 'todos',
-      nome: s.nome || ''
-    });
-  }
-  function syncPagFiltersFromDashboard(force=false, snapshot=null){
-    const dash = snapshot || getDashboardFilterSnapshot();
+  function syncPagFiltersFromDashboard(force=false){
     if(force || (!PAG_FILTROS.de && !PAG_FILTROS.ate)){
-      PAG_FILTROS.de = dash.de || '';
-      PAG_FILTROS.ate = dash.ate || PAG_FILTROS.de || '';
-    }
-    const mappedSet = new Set((dash.emps && dash.emps.length) ? dash.emps : ['todas']);
-    if(force || !PAG_FILTROS.emps || PAG_FILTROS.emps.size === 0 || PAG_FILTROS.emps.has('todas')){
-      PAG_FILTROS.emps = mappedSet;
-    }
-    if(force || !PAG_FILTROS.turno || PAG_FILTROS.turno === 'todos'){
-      PAG_FILTROS.turno = dash.turno || 'todos';
-    }
-    if(force || !String(PAG_FILTROS.nome || '').trim()){
-      PAG_FILTROS.nome = dash.nome || '';
+      if(fDataDe || fDataAte){
+        PAG_FILTROS.de = fDataDe || fDataAte || '';
+        PAG_FILTROS.ate = fDataAte || fDataDe || '';
+      }else{
+        const range = currentMonthRangeBr();
+        PAG_FILTROS.de = range.from;
+        PAG_FILTROS.ate = range.to;
+      }
     }
     pagCalTempDe = PAG_FILTROS.de || '';
     pagCalTempAte = PAG_FILTROS.ate || '';
@@ -6536,18 +6265,8 @@ function pagAbrirCadastroPix(){
     }
     const pde = document.getElementById('pcal-de');
     const pate = document.getElementById('pcal-ate');
-    const pnome = document.getElementById('pag-search-nome');
     if(pde) pde.value = pagCalTempDe;
     if(pate) pate.value = pagCalTempAte;
-    if(pnome) pnome.value = PAG_FILTROS.nome || '';
-    document.querySelectorAll('#pag-emp-btns .pbf').forEach(b=>{
-      const emp = b.dataset.emp;
-      b.classList.toggle('active', emp==='todas' ? PAG_FILTROS.emps.has('todas') : PAG_FILTROS.emps.has(emp));
-    });
-    document.querySelectorAll('#pag-turno-btns .pbf').forEach(b=>{
-      const turno = b.dataset.turno;
-      b.classList.toggle('active', (PAG_FILTROS.turno||'todos') === turno);
-    });
     pagUpdateCalLabel();
   }
   function renderPagLoadingState(msg='Preparando pagamentos...'){
@@ -6578,14 +6297,11 @@ function pagAbrirCadastroPix(){
   function applyLatestMonthRangeFromData(force=false){
     const all = getAllDates();
     if(!all.length) return;
-    const now = new Date();
-    const currentMonth = `${now.getFullYear()}-${pad2(now.getMonth()+1)}`;
-    const monthToUse = all.some(d => monthKeyFromBr(d) === currentMonth)
-      ? currentMonth
-      : monthKeyFromBr(all[all.length - 1]);
-    const sameMonth = all.filter(d => monthKeyFromBr(d) === monthToUse);
-    const first = sameMonth[0] || all[0];
-    const last = sameMonth[sameMonth.length - 1] || all[all.length - 1];
+    const latest = all[all.length - 1];
+    const latestMonth = monthKeyFromBr(latest);
+    const sameMonth = all.filter(d => monthKeyFromBr(d) === latestMonth);
+    const first = sameMonth[0] || latest;
+    const last = sameMonth[sameMonth.length - 1] || latest;
     if(force || (!fDataDe && !fDataAte)){
       fDataDe = first;
       fDataAte = last;
@@ -6601,9 +6317,7 @@ function pagAbrirCadastroPix(){
       else calLabel.textContent = '📅 Selecione o período';
     }
     syncDateInputsFromState();
-    const ref = parseDate(last);
-    calYear = ref.y;
-    calMonth = ref.m;
+    setCalToLatestData();
   }
   reinitCal = function(){ setCalToLatestData(); };
 
@@ -6625,98 +6339,6 @@ function pagAbrirCadastroPix(){
   function rowLooksLikeMotoboys(row){
     if(!row || typeof row !== 'object') return false;
     return ('Entregador' in row) || ('Entrega' in row) || ('Valor Entregador' in row) || ('Nome da loja' in row) || ('Código da loja' in row) || ('Codigo da loja' in row);
-  }
-  function indexedText(value){ return value == null ? '' : String(value).trim(); }
-  function indexedNumber(value){
-    if(value == null || value === '') return 0;
-    if(typeof value === 'number') return Number.isFinite(value) ? value : 0;
-    const cleaned = String(value).trim().replace(/\s+/g,'').replace(/R\$/g,'').replace(/\./g,'').replace(',', '.').replace(/[^0-9.-]/g,'');
-    const num = Number(cleaned);
-    return Number.isFinite(num) ? num : 0;
-  }
-  function indexedRowLooksLikeMotoboys(row){
-    if(!row || typeof row !== 'object') return false;
-    return ('mt' in row) || ('tr' in row) || ('ve' in row) || ('lj' in row) || ('lc' in row) || ('cs' in row) || ('br' in row) || ('ed' in row) || ('cv' in row);
-  }
-  async function fetchIndexedCompanyMonths(companyKey){
-    try{
-      return await motoFetchJson(`${FIREBASE_URL}/${INDEX_ROOT}/companies/${companyKey}/months.json`) || {};
-    }catch(err){
-      console.warn('Falha ao ler meses indexados de', companyKey, err);
-      return {};
-    }
-  }
-  function ingestIndexedRows(rows, map, detail, stats, counters, seenPedidos, sourceTag){
-    rows.forEach((row, idx) => {
-      if(!indexedRowLooksLikeMotoboys(row)) return;
-      const pedidoBase = indexedText(row.p || row.pedido) || `${sourceTag||'idx'}_${idx}`;
-      const dataFmtPre = normalizaData(row.d || row.data);
-      const codigoLojaPre = row.lc || row.codigo_loja || row.codigoLoja || '';
-      const lojaNomePre = normalizaEmpresa(row.lj || row.loja_nome || row.loja || row.l || '', codigoLojaPre);
-      const pedidoKey = `${pedidoBase}|${dataFmtPre||'sem_data'}|${lojaNomePre}`;
-      if(seenPedidos.has(pedidoKey)) return;
-      seenPedidos.add(pedidoKey);
-
-      const dlKey = (dataFmtPre && lojaNomePre !== 'Desconhecida') ? `${dataFmtPre}|${lojaNomePre}` : '__sem_data__';
-      if(!stats[dlKey]) stats[dlKey] = { cancelados:0, balcao:0, data:dataFmtPre, loja:lojaNomePre };
-
-      if(Number(row.c||0) === 1 || isYesLike(row.cancelado)){
-        stats[dlKey].cancelados++;
-        counters.cancelados++;
-        return;
-      }
-
-      let entregador = indexedText(row.mt || row.entregador);
-      if(entregador){
-        const s = entregador.trim();
-        if(!s || s.toUpperCase() === 'N/A' || /^\d{8,}$/.test(s)) entregador = '';
-        else entregador = s;
-      }
-      if(!entregador){
-        stats[dlKey].balcao++;
-        counters.balcao++;
-        return;
-      }
-
-      if(!dataFmtPre){ counters.semDado++; return; }
-      if(lojaNomePre === 'Desconhecida'){ counters.semDado++; return; }
-
-      const turno = normalizaTurno(row.tr || row.turno);
-      const entregaVal = indexedNumber(row.e ?? row.valEntrega ?? row.entrega);
-      const nomeUp = entregador.toUpperCase();
-      const key = `${nomeUp}|${dataFmtPre}|${turno}|${lojaNomePre}`;
-      if(!map[key]) map[key] = {
-        nome: nomeUp,
-        loja: lojaNomePre,
-        turno,
-        data: dataFmtPre,
-        dia_semana: getDiaSemana(dataFmtPre),
-        entregas: 0,
-        taxa_recebida: 0,
-        km_adic_8: 0, km_adic_9: 0, km_adic_12: 0, km_adic_13: 0, km_adic_22: 0
-      };
-      map[key].entregas += 1;
-      map[key].taxa_recebida += entregaVal;
-      const tRnd = Math.round(entregaVal);
-      if(tRnd === 8) map[key].km_adic_8 += 1;
-      else if(tRnd === 9) map[key].km_adic_9 += 1;
-      else if(tRnd === 12) map[key].km_adic_12 += 1;
-      else if(tRnd === 13) map[key].km_adic_13 += 1;
-      else if(tRnd === 22) map[key].km_adic_22 += 1;
-
-      detail.push({
-        nome: nomeUp,
-        loja: lojaNomePre,
-        turno,
-        data: dataFmtPre,
-        consumidor: indexedText(row.cs || row.consumidor),
-        bairro: indexedText(row.br || row.bairro),
-        endereco: indexedText(row.ed || row.endereco),
-        canal: indexedText(row.cv || row.canal),
-        valEntrega: entregaVal,
-        valEnt: indexedNumber(row.ve ?? row.valEnt ?? row.valor_entregador)
-      });
-    });
   }
   function isYesLike(value){
     const s = String(value == null ? '' : value).trim().toUpperCase();
@@ -6850,36 +6472,29 @@ function pagAbrirCadastroPix(){
     if(window.__motoLoading) return;
     const statusEl = document.getElementById('uploadStatus');
     const subEl = document.getElementById('headerSub');
-    if(statusEl){ statusEl.textContent=''; statusEl.style.display='none'; }
-    if(subEl) subEl.textContent = 'Lendo base consolidada de motoboys (indexada + relatórios)';
+    if(statusEl) statusEl.textContent = '⏳ Carregando base de motoboys...';
+    if(subEl) subEl.textContent = 'Lendo relatórios de motoboys no Firebase';
     window.__motoLoading = true;
     try{
+      const reportsObj = await motoFetchJson(REPORTS_URL) || {};
+      const reports = Object.entries(reportsObj).map(([id, value]) => ({ id, ...(value||{}) }))
+        .filter(rep => rep && rep.status !== 'deletado' && rep.status !== 'substituido')
+        .sort((a,b)=>(Number(a.timestamp_upload||a.created_at||0))-(Number(b.timestamp_upload||b.created_at||0)));
+
       const map = {};
       const detail = [];
       const stats = {};
       const counters = { cancelados:0, balcao:0, semDado:0 };
       const seenPedidos = new Set();
       let totalLinhas = 0;
-      let indexedRows = 0;
-      let indexedMonths = 0;
-      let indexedCompanies = 0;
-      let legacyUploads = 0;
       let validReports = 0;
-      let chunked = 0;
-      let truncados = 0;
-      let falhas = 0;
-
-      const reportsObj = await motoFetchJson(REPORTS_URL) || {};
-      const reports = Object.entries(reportsObj).map(([id, value]) => ({ id, ...(value||{}) }))
-        .filter(rep => rep && rep.status !== 'deletado' && rep.status !== 'substituido')
-        .sort((a,b)=>(Number(a.timestamp_upload||a.created_at||0))-(Number(b.timestamp_upload||b.created_at||0)));
 
       const batchSize = 6;
       for(let start=0; start<reports.length; start += batchSize){
         const slice = reports.slice(start, start + batchSize);
         const batch = await Promise.all(slice.map(async(rep, offset) => {
           const idx = start + offset;
-          if(statusEl){ statusEl.textContent=''; statusEl.style.display='none'; }
+          if(statusEl) statusEl.textContent = `⏳ Carregando base de motoboys... ${idx+1}/${reports.length}`;
           const loaded = await motoFetchReportRows(rep);
           return { rep, idx, ...loaded };
         }));
@@ -6887,33 +6502,11 @@ function pagAbrirCadastroPix(){
         for(const item of batch){
           const rows = item.rows || [];
           totalLinhas += item.totalOriginal || rows.length;
-          legacyUploads++;
-          if(item.rep?.chunked) chunked++;
-          else if((item.totalOriginal || 0) > rows.length) truncados++;
           if(rows.some(rowLooksLikeMotoboys)) validReports++;
           ingestMotoRows(rows, map, detail, stats, counters, seenPedidos, item.rep.id);
         }
         await motoYield();
       }
-
-      const indexedPacks = await Promise.all(INDEXED_COMPANY_KEYS.map(async companyKey => ({
-        companyKey,
-        months: await fetchIndexedCompanyMonths(companyKey)
-      })));
-
-      indexedPacks.forEach(pack => {
-        const monthEntries = Object.entries(pack.months || {}).sort((a,b) => a[0].localeCompare(b[0]));
-        if(monthEntries.length) indexedCompanies++;
-        monthEntries.forEach(([monthKey, payload]) => {
-          const rowsSrc = payload && payload.rows ? payload.rows : {};
-          const rows = Array.isArray(rowsSrc) ? rowsSrc : Object.values(rowsSrc || {});
-          if(!rows.length) return;
-          indexedMonths++;
-          indexedRows += rows.length;
-          totalLinhas += rows.length;
-          ingestIndexedRows(rows, map, detail, stats, counters, seenPedidos, `${pack.companyKey}_${monthKey}`);
-        });
-      });
 
       RAW = Object.values(map).sort((a,b) => dateToNum(a.data) - dateToNum(b.data));
       RAW_DETAIL = detail;
@@ -6924,16 +6517,7 @@ function pagAbrirCadastroPix(){
       try{ localStorage.setItem('motoboys_raw_v2', JSON.stringify(RAW)); }catch(e){}
       try{ localStorage.setItem('motoboys_raw_detail_v1', JSON.stringify(RAW_DETAIL)); }catch(e){}
       try{ localStorage.setItem('motoboys_stats_dl_v1', JSON.stringify(window._uploadStatsByDateLoja)); }catch(e){}
-      try{ localStorage.setItem(CACHE_META_KEY, JSON.stringify({
-        updated_at: Date.now(),
-        indexed_rows: indexedRows,
-        indexed_months: indexedMonths,
-        indexed_companies: indexedCompanies,
-        reports: reports.length,
-        valid_reports: validReports,
-        legacy_uploads: legacyUploads,
-        rows: totalLinhas
-      })); }catch(e){}
+      try{ localStorage.setItem(CACHE_META_KEY, JSON.stringify({ updated_at: Date.now(), reports: reports.length, valid_reports: validReports, rows: totalLinhas })); }catch(e){}
 
       invalidatePagCache();
       setAllCompanyButtonActive();
@@ -6945,31 +6529,16 @@ function pagAbrirCadastroPix(){
       setTimeout(()=>{ ensurePagDataReady(true).catch(()=>{}); }, 0);
 
       const totalEnt = RAW.reduce((s,r)=>s + Number(r.entregas||0), 0);
-      if(statusEl){ statusEl.textContent=''; statusEl.style.display='none'; }
-      if(subEl) subEl.textContent = [
-        indexedRows ? `${indexedRows.toLocaleString()} linhas indexadas (${indexedMonths} mês(es) / ${indexedCompanies} empresa(s))` : 'nenhuma linha indexada ainda',
-        legacyUploads ? `${legacyUploads}/${reports.length} relatório(s) legado(s) lido(s) como complemento` : null,
-        chunked ? `${chunked} legado(s) em chunks` : null,
-        truncados ? `${truncados} legado(s) truncados` : null,
-        falhas ? `${falhas} legado(s) com falha ignorados` : null,
-        totalLinhas ? `${totalLinhas.toLocaleString()} linha(s) lidas no total` : null
-      ].filter(Boolean).join(' • ');
-      if(!silent){
-        if(indexedRows){
-          motoToast(`✅ Base consolidada com ${totalEnt.toLocaleString()} entregas (indexada + relatórios).`, 3800);
-        }else if(legacyUploads){
-          motoToast(`⚠️ Base indexada sem linhas. Usando ${legacyUploads} relatório(s) legado(s) como fallback.`, 5200);
-        }else{
-          motoToast('⚠️ Nenhum dado de motoboy encontrado nas duas fontes.', 5200);
-        }
-      }
+      if(statusEl) statusEl.textContent = `${RAW.length.toLocaleString()} grupos · ${totalEnt.toLocaleString()} entregas`;
+      if(subEl) subEl.textContent = `${validReports}/${reports.length} relatório(s) com dados de motoboy • ${totalLinhas.toLocaleString()} linha(s) lidas`;
+      if(!silent) motoToast(`✅ Base de motoboys sincronizada com ${totalEnt.toLocaleString()} entregas.`, 3500);
     }catch(err){
       console.error(err);
       const statusEl2 = document.getElementById('uploadStatus');
       const subEl2 = document.getElementById('headerSub');
-      if(statusEl2){ statusEl2.textContent=''; statusEl2.style.display='none'; }
-      if(subEl2) subEl2.textContent = 'Verifique a conexão com Firebase e base indexada';
-      if(!silent) motoToast('❌ Não foi possível carregar a base consolidada de motoboys.', 5000);
+      if(statusEl2) statusEl2.textContent = '❌ Erro ao carregar a base de motoboys';
+      if(subEl2) subEl2.textContent = 'Verifique a conexão com o Firebase';
+      if(!silent) motoToast('❌ Não foi possível carregar a base de motoboys.', 5000);
       render();
     }finally{
       window.__motoLoading = false;
@@ -7028,35 +6597,18 @@ function pagAbrirCadastroPix(){
 
   setAllCompanyButtonActive();
   if(RAW.length){
-    applyCurrentMonthRangeNow(false);
+    applyLatestMonthRangeFromData(false);
+    reinitCal();
     render();
     ensureQuickPaymentButtons();
     renderCal();
   }
 
-  let __motoAutoReloadLock = false;
-  let __motoLastAutoReloadAt = 0;
-  function maybeReloadMotoData(){
-    const now = Date.now();
-    if(window.__motoLoading || __motoAutoReloadLock) return;
-    if(now - __motoLastAutoReloadAt < 20000) return;
-    __motoLastAutoReloadAt = now;
-    __motoAutoReloadLock = true;
-    Promise.resolve(loadMotoboysLegacyData({ force:true, silent:true }))
-      .catch(()=>{})
-      .finally(()=>{ __motoAutoReloadLock = false; });
-  }
   function startMotoLoad(){
     if(window.__motoInitialLoadStarted) return;
     window.__motoInitialLoadStarted = true;
     setTimeout(() => loadMotoboysLegacyData({ force:false, silent:true }), 60);
   }
-  document.addEventListener('visibilitychange', () => {
-    if(document.visibilityState === 'visible' && window.__motoInitialLoadStarted) maybeReloadMotoData();
-  });
-  window.addEventListener('focus', () => {
-    if(window.__motoInitialLoadStarted) maybeReloadMotoData();
-  });
   if(document.readyState === 'loading'){
     document.addEventListener('DOMContentLoaded', () => requestAnimationFrame(() => requestAnimationFrame(startMotoLoad)), { once:true });
   }else{
@@ -7065,352 +6617,5 @@ function pagAbrirCadastroPix(){
 })();
 </script>
 
-<script>
-(function(){
-  function pagEmpToLojaLabel(emp){
-    for(const [loja,key] of Object.entries(PAG_EMP_LOJA||{})) if(key===emp) return loja;
-    return '';
-  }
-  function pagSelectedEmps(){
-    return (PAG_FILTROS && PAG_FILTROS.emps && !PAG_FILTROS.emps.has('todas')) ? [...PAG_FILTROS.emps] : (Array.isArray(PAG_EMPS) ? PAG_EMPS.slice() : []);
-  }
-  function pagWithDashboardScope(run){
-    const saved={
-      de:fDataDe, ate:fDataAte, turno:fTurno, nome:fNome,
-      lojas:(typeof fLojas!=='undefined' && fLojas instanceof Set) ? new Set(fLojas) : new Set(['todas'])
-    };
-    try{
-      const emps=pagSelectedEmps();
-      const lojas=emps.map(pagEmpToLojaLabel).filter(Boolean);
-      fDataDe=PAG_FILTROS.de||'';
-      fDataAte=PAG_FILTROS.ate||'';
-      fTurno=(PAG_FILTROS.turno&&PAG_FILTROS.turno!=='todos')?PAG_FILTROS.turno:'';
-      fNome=String(PAG_FILTROS.nome||'').trim();
-      fLojas=(lojas.length && lojas.length < PAG_EMPS.length) ? new Set(lojas) : new Set(['todas']);
-      return run({emps,lojas});
-    }finally{
-      fDataDe=saved.de; fDataAte=saved.ate; fTurno=saved.turno; fNome=saved.nome; fLojas=saved.lojas;
-    }
-  }
-  function pagCalcPivotTotalAPagar(piv){
-    return (piv||[]).reduce((s,m)=>{
-      const lojaMain=(m.loja||'').split('+')[0]||'Just Burger';
-      return s
-        + (calcPagamento(m,lojaMain)||0)
-        + (calcKmAdic(m)||0)
-        + (calcMinimo10(m,lojaMain)||0)
-        + (calcTxTrans(m,lojaMain)||0)
-        + ((getPayConfig(lojaMain).chuva)?10:0);
-    },0);
-  }
-  function pagCollectEntriesForDay(dt, ef, filtroNome){
-    const out=[];
-    ef.forEach(emp=>Object.values(PAG_DATA[emp]||{}).forEach(m=>{
-      if(!m || !m.dias || !m.dias[dt]) return;
-      const d=m.dias[dt];
-      if(PAG_FILTROS.turno!=='todos'){
-        const turnos=(d.turnos?[...d.turnos]:[d.turno||'Noite']);
-        if(!turnos.includes(PAG_FILTROS.turno)) return;
-      }
-      const nn=pagNomeNorm(m.nome);
-      if(filtroNome && !nn.includes(filtroNome)) return;
-      out.push({emp,m,d,nn,num:pagNumCadastro(m.nome)});
-    }));
-    return out;
-  }
-  function pagFallbackGroupMeta(g){
-    return {
-      nome:g.nome,
-      totalQtd:g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0),
-      valorEntrega:g.emps.reduce((s,ie)=>s+(ie.d.totalValEnt||0),0),
-      kmAdic:0,
-      garantido:0,
-      txTrans:0,
-      chuvaCfg:0,
-      totalAligned:g.emps.reduce((s,ie)=>s+(ie.d.totalValEnt||0),0)
-    };
-  }
-  function pagBuildGroupsForDay(dt, ef, filtroNome){
-    const entradas=pagCollectEntriesForDay(dt, ef, filtroNome);
-    if(!entradas.length) return [];
-    const modoMulti=(ef||[]).length>1;
-    const dashMap=pagBuildDashboardAlignedDayMap(dt)||{};
-    let grupos=[];
-    if(modoMulti){
-      const nomesSemCadastro=[...new Set(entradas.filter(x=>!x.num).map(x=>x.nn))];
-      const mapaFuzzy=nomesSemCadastro.length && typeof construirGruposNomes==='function'
-        ? construirGruposNomes(nomesSemCadastro)
-        : Object.fromEntries(nomesSemCadastro.map(nn=>[nn,nn]));
-      const grupoMap={};
-      entradas.forEach(({emp,m,d,nn,num})=>{
-        const repNome=num ? nn : (mapaFuzzy[nn]||nn);
-        const gKey=num ? `NUM:${num}` : `NOME:${repNome}`;
-        if(!grupoMap[gKey]) grupoMap[gKey]={nome:m.nome,gKey,emps:[],turnos:new Set(),totalQtd:0,totalValEnt:0};
-        if(m.nome.length>grupoMap[gKey].nome.length) grupoMap[gKey].nome=m.nome;
-        const eKey=nn+'|'+dt+'|'+emp;
-        const extra=parseFloat(pagExtrasMap[eKey]||0)||0;
-        const chuvaVal=parseFloat(pagExtrasMap[eKey+'|chuva']||0)||0;
-        grupoMap[gKey].emps.push({emp,d,eKey,extra,chuvaVal,nn});
-        (d.turnos?[...d.turnos]:[d.turno||'Noite']).forEach(t=>grupoMap[gKey].turnos.add(t));
-      });
-      grupos=Object.values(grupoMap);
-    }else{
-      const grupoMap={};
-      entradas.forEach(({emp,m,d,nn})=>{
-        const gKey=pagGrupoKey(m.nome);
-        if(!grupoMap[gKey]) grupoMap[gKey]={nome:m.nome,gKey,emps:[],turnos:new Set(),totalQtd:0,totalValEnt:0};
-        if(m.nome.length>grupoMap[gKey].nome.length) grupoMap[gKey].nome=m.nome;
-        const eKey=nn+'|'+dt+'|'+emp;
-        const extra=parseFloat(pagExtrasMap[eKey]||0)||0;
-        const chuvaVal=parseFloat(pagExtrasMap[eKey+'|chuva']||0)||0;
-        grupoMap[gKey].emps.push({emp,d,eKey,extra,chuvaVal,nn});
-        (d.turnos?[...d.turnos]:[d.turno||'Noite']).forEach(t=>grupoMap[gKey].turnos.add(t));
-      });
-      grupos=Object.values(grupoMap);
-    }
-    grupos.forEach(g=>{
-      const manual=g.emps.reduce((s,ie)=>s+(ie.extra||0)+(ie.chuvaVal||0),0);
-      // Cálculo primário: usar os totais já consolidados em PAG_DATA (idêntico à tela de Eficiência)
-      const fallbackMeta = pagFallbackGroupMeta(g);
-      // Cálculo secundário: tenta casar pelo gKey no dashMap (apenas como fonte adicional p/ km/garantido/txTrans)
-      const aligned = dashMap[g.gKey] || null;
-      // Se aligned existir e tiver totalQtd compatível com fallback, usa aligned (que tem km/garantido/txTrans detalhados)
-      // Senão, usa fallback puro (que já vem com totalValEnt correto de PAG_DATA)
-      let meta;
-      if(aligned && Math.abs((aligned.totalQtd||0) - (fallbackMeta.totalQtd||0)) < 0.5){
-        meta = aligned;
-      } else {
-        meta = fallbackMeta;
-      }
-      g.emps._groupMeta = meta;
-      g.totalQtd = meta.totalQtd || fallbackMeta.totalQtd || g.emps.reduce((s,ie)=>s+(ie.d.qtd||0),0);
-      // totalValEnt: prioriza meta.totalAligned se válido, senão fallback (que vem de d.totalValEnt em PAG_DATA)
-      const baseAligned = (meta && meta.totalAligned > 0) ? meta.totalAligned : fallbackMeta.totalAligned;
-      g.totalValEnt = (baseAligned || 0) + manual;
-    });
-    return grupos.sort((a,b)=>(b.totalValEnt-a.totalValEnt)||a.nome.localeCompare(b.nome,'pt-BR'));
-  }
-  pagRender=function(){
-    const main=document.getElementById('pag-main');
-    if(!main) return;
-    _pagChuvaEKeys=[];
-    const ef=pagSelectedEmps();
-    const filtroNome=PAG_FILTROS.nome?pagNomeNorm(PAG_FILTROS.nome):'';
-    const temDados=ef.some(emp=>Object.keys(PAG_DATA[emp]||{}).length>0);
-    if(!temDados){
-      main.innerHTML='<div class="pempty"><div class="pei">🏍️</div><p>Nenhum dado carregado no dashboard. Aguarde a leitura da base sincronizada no Firebase.</p></div>';
-      return;
-    }
-    pagWithDashboardScope(({emps,lojas})=>{
-      const allDates=getAllDates();
-      const de=dateToNum(fDataDe), ate=dateToNum(fDataAte);
-      const activeDates=allDates.filter(d=>{ const n=dateToNum(d); return (!de||n>=de) && (!ate||n<=ate); });
-      const data=filtered();
-      const piv=pivot(data, activeDates);
-      if(!data.length){
-        main.innerHTML='<div class="pempty"><div class="pei">🔍</div><p>Nenhum dado para os filtros selecionados.</p></div>';
-        return;
-      }
-      const chips=emps.map(emp=>{
-        const loja=pagEmpToLojaLabel(emp);
-        const dataEmp=data.filter(r=>r.loja===loja);
-        if(!dataEmp.length) return '';
-        const pivEmp=pivot(dataEmp, activeDates);
-        const totalEnt=dataEmp.reduce((s,r)=>s+(r.entregas||0),0);
-        const totalPagar=pagCalcPivotTotalAPagar(pivEmp);
-        return `<span class="chip">${PAG_EMP_LABEL[emp]}: ${pivEmp.length} motoboys · ${totalEnt} ent · <b>R$ ${totalPagar.toFixed(2)}</b></span>`;
-      }).filter(Boolean).join('');
-      let html='<div class="pstatus-row">'+chips+'</div>';
-      const diasPivot={};
-      activeDates.forEach(dt=>{
-        const grupos=pagBuildGroupsForDay(dt, emps, filtroNome);
-        if(grupos.length) diasPivot[dt]=grupos;
-      });
-      const diasFiltrados=Object.keys(diasPivot).sort((a,b)=>pagDateNum(a)-pagDateNum(b));
-      if(!diasFiltrados.length){
-        main.innerHTML=html+'<div class="pempty"><div class="pei">🔍</div><p>Nenhum dado para os filtros selecionados.</p></div>';
-        return;
-      }
-      const totalEnt=data.reduce((s,r)=>s+(r.entregas||0),0);
-      const totalTaxa=data.reduce((s,r)=>s+(r.taxa_recebida||0),0);
-      const totalGarantido=piv.reduce((s,m)=>s+(calcMinimo10(m,(m.loja||'').split('+')[0]||'Just Burger')||0),0);
-      const manualTotal=diasFiltrados.reduce((s,dt)=>s+diasPivot[dt].reduce((ss,g)=>ss+g.emps.reduce((sx,ie)=>sx+(ie.extra||0)+(ie.chuvaVal||0),0),0),0);
-      const totalPagar=pagCalcPivotTotalAPagar(piv)+manualTotal;
-      html+=`<div class="psum-cards">
-        <div class="pscard"><div class="sv">${diasFiltrados.length}</div><div class="sl">Dias</div></div>
-        <div class="pscard"><div class="sv">${totalEnt}</div><div class="sl">Entregas</div></div>
-        <div class="pscard gold"><div class="sv">R$ ${totalTaxa.toFixed(2)}</div><div class="sl">Taxa Recebida</div></div>
-        ${totalGarantido>0?`<div class="pscard" style="border-color:rgba(85,239,196,.4)"><div class="sv" style="color:#55efc4">R$ ${totalGarantido.toFixed(2)}</div><div class="sl">✅ Garantido</div></div>`:''}
-        <div class="pscard green"><div class="sv">R$ ${totalPagar.toFixed(2)}</div><div class="sl">💰 Total a Pagar</div></div>
-      </div>`;
-      diasFiltrados.forEach((dt,dIdx)=>{
-        const grupos=diasPivot[dt];
-        const diaQtd=grupos.reduce((s,g)=>s+(g.totalQtd||0),0);
-        const diaVal=grupos.reduce((s,g)=>s+(g.totalValEnt||0),0);
-        const dowAbrev=PAG_DIAS_PT[pagDiaSemana(dt)];
-        const dayLabel=pagFormatDiaLabel(dt);
-        html+=`<div class="pdia-bloco" id="pdia-${dIdx}">
-          <div class="pdia-header" onclick="pagToggleDia(${dIdx})">
-            <span class="pdia-toggle open" id="pdtog-${dIdx}">▼</span>
-            <span class="pdia-dow">${dowAbrev}</span>
-            <span class="pdia-date">${dayLabel}</span>
-            <span class="pdia-total-ent">${diaQtd} entregas</span>
-            <span class="pdia-total-val" id="pdiaval-${dIdx}">R$ ${diaVal.toFixed(2)}</span>
-          </div>
-          <div class="pdia-body open" id="pdbody-${dIdx}">`;
-        grupos.forEach((g,mIdx)=>{
-          const dRep=g.emps[0].d;
-          html+=pagMotoHtml(dIdx,0,mIdx,dt,g.nome,dRep,g.emps[0].emp,g.emps);
-        });
-        html+='</div></div>';
-      });
-      main.innerHTML=html;
-    });
-  };
-})();
-</script>
-<script>(function(){
-  const LOCAL_MONTHS = ['2026-03','2026-04'];
-  const DEFAULT_DE = '01/03/2026';
-  const DEFAULT_ATE = '17/04/2026';
-  const LOCAL_LABEL = 'Just Burger';
-  const SOURCE_STORE_NAME = 'Just Burger Zona Leste';
-  const HEADER_INIT = 'Carregando base local enriquecida (mar/abr 2026)…';
-  const LEGACY_KEYS = ['motoboys_raw_v2','motoboys_raw_detail_v1','motoboys_stats_dl_v1','motoboys_cache_meta_v2','motoboys_pay_config_v3'];
-  function clearAllLegacy(){
-    try{ LEGACY_KEYS.forEach(k=>localStorage.removeItem(k)); }catch(e){}
-    try{ window._uploadStatsByDateLoja = {}; }catch(e){}
-    try{ if(typeof RAW!=='undefined') RAW = []; }catch(e){}
-    try{ if(typeof RAW_DETAIL!=='undefined') RAW_DETAIL = []; }catch(e){}
-    if(window.PAG_DATA){ Object.keys(window.PAG_DATA).forEach(k=>{ window.PAG_DATA[k]={}; }); }
-  }
-  function fmtBrDateTime(iso){
-    if(!iso) return '';
-    const s=String(iso).trim().replace('T',' ');
-    let m=s.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
-    if(m) return `${m[3]}/${m[2]}/${m[1]} ${m[4]}:${m[5]}`;
-    m=s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if(m) return `${m[3]}/${m[2]}/${m[1]} 00:00`;
-    return s;
-  }
-  async function fetchLocalRows(){
-    const out = [];
-    for(const m of LOCAL_MONTHS){
-      const r = await fetch('./data/vendas-index/months/' + m + '.json', { cache:'no-store' });
-      if(!r.ok) throw new Error('Falha ao ler base local ' + m + ' (HTTP ' + r.status + ')');
-      const j = await r.json();
-      if(j && Array.isArray(j.rows)) out.push.apply(out, j.rows);
-    }
-    return out;
-  }
-  function rowsToLegacyLike(rows){
-    return rows.map(r => ({
-      'Pedido': r.p || '',
-      'Código da loja': r.codigo_loja || '',
-      'Nome da loja': r.loja_original || SOURCE_STORE_NAME,
-      'Tipo do pedido': r.tipo_pedido || 'D',
-      'Turno': r.turno || '',
-      'Canal de venda': r.canal_venda || '',
-      'Id do pedido no parceiro': r.id_parceiro || '',
-      'Número do pedido no parceiro': r.pedido_parceiro || '',
-      'Data da venda': fmtBrDateTime(r.dt || r.d || ''),
-      'Consumidor': r.consumidor || '',
-      'Tem cupom': r.tem_cupom || '',
-      'Pagamento': r.pagamento || '',
-      'Está cancelado': r.c ? 'S' : 'N',
-      'Motivo do cancelamento': r.motivo_cancelamento || '',
-      'Itens': Number(r.i || 0),
-      'Entrega': Number(r.e || 0),
-      'Valor Entregador': Number(r.valor_entregador || 0),
-      'Entregador': r.entregador || '',
-      'Bairro': r.bairro || '',
-      'CEP': r.cep || '',
-      'Acréscimo': Number(r.a || 0),
-      'Motivo de acréscimo': r.motivo_acrescimo || '',
-      'Desconto': Number(r.dc || 0),
-      'Motivo do desconto': r.motivo_desconto || '',
-      'Total': Number(r.t || 0)
-    }));
-  }
-  function applyDefaultFilters(){
-    try{
-      if(typeof fLojas !== 'undefined'){ fLojas = new Set([LOCAL_LABEL]); fLoja = LOCAL_LABEL; }
-      if(typeof fTurno !== 'undefined') fTurno = '';
-      if(typeof fNome !== 'undefined') fNome = '';
-      if(typeof fDataDe !== 'undefined') fDataDe = DEFAULT_DE;
-      if(typeof fDataAte !== 'undefined') fDataAte = DEFAULT_ATE;
-      const cfgEmp = document.getElementById('cfgEmpresa');
-      if(cfgEmp){
-        if(!Array.from(cfgEmp.options).some(o=>o.value===LOCAL_LABEL)){
-          const opt = document.createElement('option'); opt.value=LOCAL_LABEL; opt.textContent='🍔 ' + LOCAL_LABEL; cfgEmp.appendChild(opt);
-        }
-        cfgEmp.value = LOCAL_LABEL;
-      }
-      document.querySelectorAll('.btn-filter[data-filter="loja"]').forEach(btn => btn.classList.toggle('active', btn.dataset.val===LOCAL_LABEL));
-      document.querySelectorAll('.btn-filter[data-filter="turno"]').forEach(btn => btn.classList.remove('active'));
-      const deInput = document.getElementById('dateDe'); if(deInput) deInput.value = DEFAULT_DE;
-      const ateInput = document.getElementById('dateAte'); if(ateInput) ateInput.value = DEFAULT_ATE;
-      const search = document.getElementById('searchName'); if(search) search.value = '';
-      if(window.PAG_FILTROS){ PAG_FILTROS.emps = new Set(['burger']); PAG_FILTROS.turno='todos'; PAG_FILTROS.de=DEFAULT_DE; PAG_FILTROS.ate=DEFAULT_ATE; PAG_FILTROS.nome=''; }
-    }catch(e){ console.error('falha ao aplicar filtros padrão', e); }
-  }
-  function decorateUi(){
-    const sub = document.getElementById('headerSub'); if(sub) sub.textContent = HEADER_INIT;
-    document.querySelectorAll('.btn-upload').forEach(el=>el.style.display='none');
-    const drop = document.getElementById('uploadDrop'); if(drop) drop.style.display='none';
-    const modal = document.getElementById('uploadModal'); if(modal) modal.classList.remove('show');
-    const inp = document.getElementById('uploadInput'); if(inp) inp.remove();
-  }
-  function showFatalEmpty(message){
-    const c = document.getElementById('cardsContainer');
-    if(c) c.innerHTML = '<div style="grid-column:1/-1;text-align:center;padding:32px;color:#fca5a5"><div style="font-size:3rem">📂</div><div style="font-size:1rem;margin-top:8px;color:#fff">Base local não encontrada</div><div style="font-size:.85rem;margin-top:6px;color:#fbcfe8">' + (message||'') + '</div><div style="font-size:.78rem;margin-top:10px;color:#94a3b8">Esperado: ./data/vendas-index/months/2026-03.json e ./data/vendas-index/months/2026-04.json</div></div>';
-    try{ document.getElementById('tableBody').innerHTML=''; }catch(e){}
-    try{ document.getElementById('tableHead').innerHTML=''; }catch(e){}
-  }
-  async function loadLocalAndRender(){
-    if(window.__motoLoading) return;
-    window.__motoLoading = true;
-    const sub = document.getElementById('headerSub');
-    try{
-      clearAllLegacy();
-      decorateUi();
-      const enriched = await fetchLocalRows();
-      const legacyRows = rowsToLegacyLike(enriched);
-      const map={}, detail=[], stats={}, counters={cancelados:0,balcao:0,semDado:0}, seen=new Set();
-      if(typeof ingestMotoRows !== 'function') throw new Error('ingestMotoRows ausente — base HTML errada');
-      ingestMotoRows(legacyRows, map, detail, stats, counters, seen, 'local_bundle_marabr_2026');
-      RAW = Object.values(map).sort((a,b)=>dateToNum(a.data)-dateToNum(b.data));
-      RAW_DETAIL = detail;
-      window._uploadStatsByDateLoja = {};
-      Object.entries(stats).forEach(([k,v])=>{ if(k!=='__sem_data__') window._uploadStatsByDateLoja[k] = { cancelados:v.cancelados||0, balcao:v.balcao||0 }; });
-      if(window.PAG_EMP_LOJA){ window.PAG_EMP_LOJA[LOCAL_LABEL]='burger'; window.PAG_EMP_LOJA['Burger Matriz']='burger'; }
-      if(window.PAY_CONFIG && PAY_CONFIG['Just Burger'] && !PAY_CONFIG['Burger Matriz']) PAY_CONFIG['Burger Matriz'] = Object.assign({}, PAY_CONFIG['Just Burger']);
-      if(typeof invalidatePagCache==='function') invalidatePagCache();
-      applyDefaultFilters();
-      if(typeof reinitCal==='function') reinitCal();
-      if(typeof render==='function') render();
-      if(typeof ensureQuickPaymentButtons==='function') ensureQuickPaymentButtons();
-      if(typeof renderCal==='function') renderCal();
-      try{ if(typeof ensurePagDataReady==='function') await ensurePagDataReady(true); }catch(e){ console.warn('pag ready falhou', e); }
-      const entregas = (RAW||[]).reduce((s,r)=>s+(Number(r.entregas)||0),0);
-      if(sub) sub.textContent = entregas.toLocaleString('pt-BR') + ' entregas válidas — base local enriquecida (mar/abr 2026)';
-      if(typeof motoToast==='function') motoToast('✅ Base local enriquecida carregada (' + entregas.toLocaleString('pt-BR') + ' entregas).', 4200);
-    }catch(err){
-      console.error(err);
-      if(sub) sub.textContent = 'Falha ao carregar base local enriquecida';
-      showFatalEmpty(String((err && err.message) || err));
-      if(typeof motoToast==='function') motoToast('❌ ' + ((err && err.message) || 'Falha ao ler base local'), 6000);
-    }finally{
-      window.__motoLoading = false;
-    }
-  }
-  window.loadMotoboysLegacyData = function(){ return loadLocalAndRender(); };
-  window.loadFromFirebaseMotoboys = function(){ return loadLocalAndRender(); };
-  window.maybeReloadMotoData = function(){};
-  window.clearAllData = function(){ clearAllLegacy(); loadLocalAndRender(); };
-  function bootstrap(){ decorateUi(); clearAllLegacy(); loadLocalAndRender(); }
-  if(document.readyState==='loading'){ document.addEventListener('DOMContentLoaded', ()=>requestAnimationFrame(bootstrap), { once:true }); }
-  else{ requestAnimationFrame(bootstrap); }
-})();</script>
 </body>
 </html>
