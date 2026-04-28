@@ -1,10 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-<script>(function(){try{
-  ['motoboys_stats_dl_v1','motoboys_raw_v2','motoboys_raw_detail_v1','motoboys_cache_meta_v2'].forEach(function(k){try{localStorage.removeItem(k);}catch(e){}});
-}catch(_e){}})();</script>
-
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
@@ -17,11 +13,6 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
 <style>
-  /* === oculta badge grupos·entregas no header === */
-  #uploadStatus, .upload-status { display:none !important; visibility:hidden !important; width:0 !important; height:0 !important; padding:0 !important; margin:0 !important; }
-  /* === remove inputs DE/ATÉ externos (mantém só o botão calendário) === */
-  #inputAteIso, #inputDeIso { display:none !important; }
-
   :root{
     --bg:#0f0f1a;--card:#1a1a2e;--card2:#16213e;
     --accent:#4a90e2;--accent2:#e24a7a;
@@ -411,6 +402,92 @@
   .pix-input-p:focus{border-color:var(--accent)}
   .total-pagar-p{font-weight:800;color:var(--green)}
 </style>
+
+<style>
+#uploadStatus, .upload-status { display: none !important; }
+/* Hide original Data filter-group (we move calendar button inline into Empresa group) */
+#dataFilterGroupOriginal { display: none !important; }
+/* Calendar button styled like btn-filter to match horizontal alignment */
+#btnCalendarInline {
+  padding: 6px 14px !important;
+  border-radius: 20px !important;
+  border: 1px solid var(--border) !important;
+  background: transparent !important;
+  color: var(--muted) !important;
+  cursor: pointer !important;
+  font-size: .82rem !important;
+  transition: .2s !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  line-height: 1.2 !important;
+  height: auto !important;
+  white-space: nowrap !important;
+}
+#btnCalendarInline:hover {
+  background: rgba(74,144,226,.1) !important;
+  border-color: rgba(74,144,226,.4) !important;
+  color: #cfe6ff !important;
+}
+#calDropdownInline {
+  display: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 9999;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  min-width: 340px;
+}
+#calWrapInline {
+  position: relative;
+  display: inline-block;
+}
+.btn-group { align-items: center !important; }
+</style>
+
+<script>
+(function(){
+  try{
+    // Clear stale stats cache (phantom balcão counter)
+    localStorage.removeItem('motoboys_stats_dl_v1');
+    localStorage.removeItem('motoboys_cache_meta_v2');
+  }catch(e){}
+  // IMMEDIATE setup: define month range BEFORE base loads, so calendar shows data right away.
+  function pad2x(n){ return String(n).padStart(2,'0'); }
+  window.__BOOT_DATE_DE = (function(){
+    const now = new Date();
+    const lm = new Date(now.getFullYear(), now.getMonth()-1, 1);
+    return pad2x(lm.getDate())+'/'+pad2x(lm.getMonth()+1)+'/'+lm.getFullYear();
+  })();
+  window.__BOOT_DATE_ATE = (function(){
+    const now = new Date();
+    return pad2x(now.getDate())+'/'+pad2x(now.getMonth()+1)+'/'+now.getFullYear();
+  })();
+  // After DOM ready, immediately set the calendar label and inputs (even before data finishes loading)
+  document.addEventListener('DOMContentLoaded', function(){
+    try{
+      const lbl = document.getElementById('calLabel');
+      if(lbl) lbl.textContent = window.__BOOT_DATE_DE+' → '+window.__BOOT_DATE_ATE;
+      const lblI = document.getElementById('calLabelInline');
+      if(lblI) lblI.textContent = window.__BOOT_DATE_DE+' → '+window.__BOOT_DATE_ATE;
+      const inDe = document.getElementById('inputDe'); if(inDe) inDe.value = window.__BOOT_DATE_DE;
+      const inAte = document.getElementById('inputAte'); if(inAte) inAte.value = window.__BOOT_DATE_ATE;
+      // Set fDataDe/fDataAte globals as soon as possible
+      if(typeof window !== 'undefined'){
+        try{ fDataDe = window.__BOOT_DATE_DE; }catch(e){ window.fDataDe = window.__BOOT_DATE_DE; }
+        try{ fDataAte = window.__BOOT_DATE_ATE; }catch(e){ window.fDataAte = window.__BOOT_DATE_ATE; }
+      }
+      // Force calendar to current month
+      const now = new Date();
+      try{ if(typeof calYear !== 'undefined'){ calYear = now.getFullYear(); calMonth = now.getMonth(); } }catch(e){}
+    }catch(e){ console.warn('boot setup error', e); }
+  });
+})();
+</script>
 </head>
 <body>
 
@@ -438,10 +515,17 @@
       <button class="btn-filter gourmet" data-filter="loja" data-val="Gourmet">🍽️ Gourmet</button>
       <button class="btn-filter forneria" data-filter="loja" data-val="Aham Forneria">🍕 Forneria</button>
       <button class="btn-filter sushi" data-filter="loja" data-val="Aham Sushi">🍣 Sushi</button>
+      <div id="calWrapInline">
+        <button id="btnCalendarInline" type="button" onclick="toggleCalInline(event)">
+          <span id="calLabelInline">📅 Selecione o período</span>
+          <span style="font-size:.7rem;opacity:.6">▼</span>
+        </button>
+        <div id="calDropdownInline"></div>
+      </div>
     </div>
   </div>
   <!-- Data -->
-  <div class="filter-group">
+  <div class="filter-group" id="dataFilterGroupOriginal">
     <label>📅 Data</label>
     <div style="position:relative;display:inline-block">
       <button id="btnCalendar" style="display:flex;align-items:center;gap:8px;padding:7px 16px;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-size:.85rem;transition:.2s" onclick="toggleCal()">
@@ -924,15 +1008,7 @@ if(_searchNameInput){
 // ═══════════════════════════════════════════════════════════════════
 // CALENDÁRIO (mantido exatamente como original)
 // ═══════════════════════════════════════════════════════════════════
-function getAllDates(){
-  if(typeof window._datasPreloaded !== 'undefined' && window._datasPreloaded.size > 0 && (!RAW || RAW.length === 0)){
-    return [...window._datasPreloaded].sort((a,b)=>{
-      const pa=a.split('/').reverse().join('');
-      const pb=b.split('/').reverse().join('');
-      return pa.localeCompare(pb);
-    });
-  }
- return [...new Set(RAW.map(r => r.data))].sort(); }
+function getAllDates(){ return [...new Set(RAW.map(r => r.data))].sort(); }
 const availDates = getAllDates();
 
 function parseDate(s){ const [d,m,y] = s.split('/'); return {y:+y, m:+m-1, d:+d}; }
@@ -954,13 +1030,7 @@ let calYear, calMonth;
 function toggleCal(){
   const d = document.getElementById('calDropdown');
   d.style.display = d.style.display === 'none' ? 'block' : 'none';
-  if(d.style.display === 'block'){
-    const _hoje = new Date();
-    if(typeof calYear !== 'undefined') calYear = _hoje.getFullYear();
-    if(typeof calMonth !== 'undefined') calMonth = _hoje.getMonth();
-    pickTarget = 'de';
-    renderCal();
-  }
+  if(d.style.display === 'block'){ pickTarget = 'de'; renderCal(); }
 }
 function setPickTarget(t){ pickTarget = t; renderCal(); }
 document.addEventListener('click', e => {
@@ -1015,28 +1085,7 @@ function selectDate(dd){
   syncDateInputsFromState();
   renderCal();
 }
-
-function _ensurePreloadedDates(){
-  if(typeof window._preloadedRangeDone === 'undefined'){ window._preloadedRangeDone = false; }
-  if(window._preloadedRangeDone) return;
-  window._preloadedRangeDone = true;
-  var _hoje = new Date();
-  var _y = _hoje.getFullYear();
-  var _m = _hoje.getMonth();
-  var _prev = new Date(_y, _m - 1, 1);
-  var _diasMesAtual = new Date(_y, _m + 1, 0).getDate();
-  var _diasMesAnt   = new Date(_y, _m,     0).getDate();
-  function _pad(n){ return String(n).padStart(2,'0'); }
-  if(!window._datasPreloaded) window._datasPreloaded = new Set();
-  for(var d=1; d<=_diasMesAnt; d++){
-    window._datasPreloaded.add(`${_pad(d)}/${_pad(_prev.getMonth()+1)}/${_prev.getFullYear()}`);
-  }
-  for(var d2=1; d2<=_diasMesAtual; d2++){
-    window._datasPreloaded.add(`${_pad(d2)}/${_pad(_m+1)}/${_y}`);
-  }
-}
 function renderCal(){
-  _ensurePreloadedDates();
   const months=['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
   document.getElementById('calMonthLabel').textContent = months[calMonth] + ' ' + calYear;
   const grid = document.getElementById('calGrid');
@@ -1176,11 +1225,10 @@ function nomeNorm(s){
 // Esses motoboys NÃO entram no cálculo de valor a pagar nem na tabela.
 // Seus pedidos são contabilizados separadamente no card de "Não Contabilizados".
 function isNomeEspecial(nome){
-  const n = String(nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
-  if(/\bCONFIRMAD[OA]\b/.test(n)) return true;
-  if(/\bAVALIAC[AO]E?S?\b/.test(n)) return true;
-  if(/\bAHAM\s*SUSHI\b/.test(n)) return true;
-  if(/^AHAMSUSHI\b/.test(n)) return true;
+  const n = String(nome||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().trim();
+  if(/\bCONFIRMADO\b/.test(n)) return true;
+  if(/\bAVALIACAO\b/.test(n)) return true;
+  if(/AHAM\s*SUSHI/.test(n)) return true;
   return false;
 }
 
@@ -1537,7 +1585,7 @@ function render(){
     confirmadosFiltrado += r.entregas;
   });
 
-  // ── Cancelados/balcão: somados APENAS das datas+lojas que estão no filtro ativo ──
+  // ── Cancelados/Entrega iFood: somados APENAS das datas+lojas que estão no filtro ativo ──
   let cancelFiltrado = 0, balcaoFiltrado = 0;
   if(window._uploadStatsByDateLoja){
     const de2  = dateToNum(fDataDe);
@@ -1592,7 +1640,7 @@ function render(){
         <div class="val" style="font-size:1.6rem">${totalNaoContab.toLocaleString()}</div>
         <div class="lbl">❌ Não Contabilizados<br>
           <span style="font-size:.65rem;color:#c0392b;line-height:1.5">
-            ${cancelFiltrado>0?cancelFiltrado+' cancel.':''}${cancelFiltrado>0&&(balcaoFiltrado>0||confirmadosFiltrado>0)?' · ':''}${balcaoFiltrado>0?balcaoFiltrado+' Entrega iFood':''}${balcaoFiltrado>0&&confirmadosFiltrado>0?' · ':''}${confirmadosFiltrado>0?confirmadosFiltrado+' confirmados':''}
+            ${cancelFiltrado>0?cancelFiltrado+' cancel.':''}${cancelFiltrado>0&&(balcaoFiltrado>0||confirmadosFiltrado>0)?' · ':''}${balcaoFiltrado>0?balcaoFiltrado+' balcão':''}${balcaoFiltrado>0&&confirmadosFiltrado>0?' · ':''}${confirmadosFiltrado>0?confirmadosFiltrado+' confirmados':''}
           </span>
         </div>
       </div>` : '';
@@ -2008,25 +2056,20 @@ const LOJA_MAP = {
 };
 
 function normalizaEmpresa(nomeLoja, codigoLoja){
-  // ── Regra Just Burger Matriz (nova) ─────────────────────────────
-  // "Just Burger" + "Zona Leste" => MATRIZ (Just Burger)
-  // "Just Burger" sem "Zona Leste" => OUTRA LOJA (Guarulhos etc.) → DESCONSIDERA
-  const sLower = String(nomeLoja||'').toLowerCase().trim();
-  if(sLower.includes('just burger') || sLower.includes('justburger')){
-    if(sLower.includes('zona leste')) return 'Just Burger';
-    return 'Desconhecida'; // descarta linha (não é matriz)
-  }
-  // Demais empresas: lógica original
   if(codigoLoja){
     const cod = String(codigoLoja).trim();
     if(LOJA_MAP[cod]) return LOJA_MAP[cod];
   }
   if(!nomeLoja) return 'Desconhecida';
-  const s = sLower;
+  const s = String(nomeLoja).toLowerCase().trim();
+  // Just Burger: ONLY matrix (Zona Leste) is considered. Other Just Burger units (e.g. Guarulhos) are excluded.
+  if(s.includes('burger')){
+    if(s.includes('zona leste')) return 'Just Burger';
+    return 'Desconhecida';
+  }
   for(const [k,v] of Object.entries(LOJA_MAP)){
     if(s.includes(k)) return v;
   }
-  if(s.includes('burger')) return 'Desconhecida'; // burger sem identificação clara → descarta
   return String(nomeLoja).trim() || 'Desconhecida';
 }
 
@@ -6260,17 +6303,15 @@ function pagAbrirCadastroPix(){
     };
   }
   function applyCurrentMonthRangeNow(force=false){
+    // Default range: first day of PREVIOUS month → today (so user sees current+previous month immediately)
+    function _pad2(n){ return String(n).padStart(2,'0'); }
     const _now = new Date();
-    const _y = _now.getFullYear();
-    const _m = _now.getMonth();
-    const _prev = new Date(_y, _m - 1, 1);
-    const _pad = n => String(n).padStart(2,'0');
-    const _firstPrevMonth = `${_pad(_prev.getDate())}/${_pad(_prev.getMonth()+1)}/${_prev.getFullYear()}`;
-    const _today = `${_pad(_now.getDate())}/${_pad(_now.getMonth()+1)}/${_now.getFullYear()}`;
-    const range = { from: _firstPrevMonth, to: _today };
+    const _lm = new Date(_now.getFullYear(), _now.getMonth()-1, 1);
+    const _from = _pad2(_lm.getDate())+'/'+_pad2(_lm.getMonth()+1)+'/'+_lm.getFullYear();
+    const _to   = _pad2(_now.getDate())+'/'+_pad2(_now.getMonth()+1)+'/'+_now.getFullYear();
     if(force || (!fDataDe && !fDataAte)){
-      fDataDe = range.from;
-      fDataAte = range.to;
+      fDataDe = _from;
+      fDataAte = _to;
     }
     const inputDe = document.getElementById('inputDe');
     const inputAte = document.getElementById('inputAte');
@@ -6281,6 +6322,13 @@ function pagAbrirCadastroPix(){
       if(fDataDe && fDataAte && fDataDe !== fDataAte) calLabel.textContent = '📅 ' + fDataDe.slice(0,5) + ' → ' + fDataAte.slice(0,5);
       else if(fDataDe) calLabel.textContent = '📅 ' + fDataDe;
       else calLabel.textContent = '📅 Selecione o período';
+    }
+    
+    const _calLabelInline = document.getElementById('calLabelInline');
+    if(_calLabelInline){
+      if(fDataDe && fDataAte && fDataDe !== fDataAte) _calLabelInline.textContent = '📅 ' + fDataDe.slice(0,5) + ' → ' + fDataAte.slice(0,5);
+      else if(fDataDe) _calLabelInline.textContent = '📅 ' + fDataDe;
+      else _calLabelInline.textContent = '📅 Selecione o período';
     }
     syncDateInputsFromState();
     const now = new Date();
@@ -6455,24 +6503,10 @@ function pagAbrirCadastroPix(){
       if(!stats[dlKey]) stats[dlKey] = { cancelados:0, balcao:0, data:dataFmtPre, loja:lojaNomePre };
 
       const cancelado = String(row['Está cancelado']||row['Esta cancelado']||row['cancelado']||'N').trim().toUpperCase();
-      const isCancelado = (cancelado === 'S' || cancelado === 'SIM' || cancelado === '1');
-      let _entCheckRaw = row['Entregador'];
-      let _entCheckText = _entCheckRaw === null || _entCheckRaw === undefined ? '' : String(_entCheckRaw).trim();
-      const _isEspecial = (function(n){
-        const s = String(n||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/[^A-Z0-9 ]+/g,' ').replace(/\s+/g,' ').trim();
-        if(/\bCONFIRMAD[OA]\b/.test(s)) return true;
-        if(/\bAVALIAC[AO]E?S?\b/.test(s)) return true;
-        if(/\bAHAM\s*SUSHI\b/.test(s)) return true;
-        if(/^AHAMSUSHI\b/.test(s)) return true;
-        return false;
-      })(_entCheckText);
-      const _temMotoboyValido = _entCheckText && !_isEspecial && _entCheckText.toUpperCase() !== 'N/A' && !/^\d{8,}$/.test(_entCheckText);
-      if(isCancelado){
+      if(cancelado === 'S' || cancelado === 'SIM' || cancelado === '1'){
         stats[dlKey].cancelados++;
         counters.cancelados++;
-        if(_isEspecial){
-          // segue o fluxo
-        } else if(!_temMotoboyValido) return;
+        return;
       }
 
       let entregador = '';
@@ -6485,10 +6519,8 @@ function pagAbrirCadastroPix(){
       const entregueMarcado = ['Entregue','Entrega realizada','Entrega realizada?'].some(col => isYesLike(row[col]));
       if(!entregador){
         if(!(rawEntText === '' && entregueMarcado)){
-          if(!isCancelado){
-            stats[dlKey].balcao++;
-            counters.balcao++;
-          }
+          stats[dlKey].balcao++;
+          counters.balcao++;
           return;
         }
       }
@@ -6694,5 +6726,79 @@ function pagAbrirCadastroPix(){
 })();
 </script>
 
+<script>
+(function(){
+  // Bridge inline calendar button to the existing calendar dropdown.
+  // We RELOCATE the original calDropdown into calDropdownInline at runtime, then toggle it.
+  let __calMoved = false;
+  function moveCalendarIntoInline(){
+    if(__calMoved) return true;
+    const orig = document.getElementById('calDropdown');
+    const target = document.getElementById('calDropdownInline');
+    if(!orig || !target) return false;
+    // Move children of orig into target
+    while(orig.firstChild){ target.appendChild(orig.firstChild); }
+    orig.style.display = 'none';
+    __calMoved = true;
+    return true;
+  }
+  window.toggleCalInline = function(ev){
+    if(ev){ ev.stopPropagation(); ev.preventDefault(); }
+    moveCalendarIntoInline();
+    const dd = document.getElementById('calDropdownInline');
+    if(!dd) return;
+    const isOpen = dd.style.display === 'block';
+    dd.style.display = isOpen ? 'none' : 'block';
+    // Re-render calendar grid if available
+    try{ if(typeof renderCal === 'function') renderCal(); }catch(e){}
+  };
+  // Close on outside click
+  document.addEventListener('click', function(ev){
+    const dd = document.getElementById('calDropdownInline');
+    const btn = document.getElementById('btnCalendarInline');
+    if(!dd || !btn) return;
+    if(dd.style.display === 'block' && !dd.contains(ev.target) && !btn.contains(ev.target)){
+      dd.style.display = 'none';
+    }
+  });
+  // Sync the inline label whenever the original label changes
+  function syncLabels(){
+    const a = document.getElementById('calLabel');
+    const b = document.getElementById('calLabelInline');
+    if(a && b && a.textContent && a.textContent !== b.textContent){
+      b.textContent = a.textContent;
+    }
+  }
+  setInterval(syncLabels, 800);
+  // Make sure calendar is always rendered before user clicks (so first click already shows days)
+  document.addEventListener('DOMContentLoaded', function(){
+    setTimeout(function(){
+      try{
+        moveCalendarIntoInline();
+        if(typeof renderCal === 'function') renderCal();
+      }catch(e){}
+    }, 200);
+  });
+})();
+</script>
+<script>
+(function(){
+  // Force initial date range to current + previous month, IMMEDIATELY on DOM ready
+  function tryApply(){
+    try{
+      if(typeof applyCurrentMonthRangeNow === 'function'){
+        applyCurrentMonthRangeNow(true);
+        if(typeof renderCal === 'function') renderCal();
+        if(typeof render === 'function') render();
+      }
+    }catch(e){ console.warn('initial range apply error', e); }
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', function(){ setTimeout(tryApply, 50); setTimeout(tryApply, 600); setTimeout(tryApply, 1500); });
+  } else {
+    setTimeout(tryApply, 50); setTimeout(tryApply, 600); setTimeout(tryApply, 1500);
+  }
+})();
+</script>
 </body>
 </html>
